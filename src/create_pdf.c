@@ -444,7 +444,8 @@ int create_pdf( nwipe_context_t* ptr )
      */
     pdf_add_text( pdf, NULL, "PRNG algorithm:", 12, 300, 270, PDF_GRAY );
     if( nwipe_options.method == &nwipe_verify_one || nwipe_options.method == &nwipe_verify_zero
-        || nwipe_options.method == &nwipe_zero || nwipe_options.method == &nwipe_one )
+        || nwipe_options.method == &nwipe_zero || nwipe_options.method == &nwipe_one
+        || nwipe_options.method == &nwipe_unraid )
     {
         snprintf( prng_type, sizeof( prng_type ), "Not applicable to method" );
     }

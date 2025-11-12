@@ -69,6 +69,7 @@ const char* nwipe_verify_zero_label = "Verify Zeros (0x00)";
 const char* nwipe_verify_one_label = "Verify Ones  (0xFF)";
 const char* nwipe_is5enh_label = "HMG IS5 Enhanced";
 const char* nwipe_bruce7_label = "Bruce Schneier 7-Pass";
+const char* nwipe_unraid_label = "Unraid Preclear";
 
 const char* nwipe_unknown_label = "Unknown Method (FIXME)";
 
@@ -122,6 +123,10 @@ const char* nwipe_method_label( void* method )
     if( method == &nwipe_bruce7 )
     {
         return nwipe_bruce7_label;
+    }
+    if( method == &nwipe_unraid )
+    {
+        return nwipe_unraid_label;
     }
 
     /* else */
@@ -799,6 +804,39 @@ void* nwipe_bruce7( void* ptr )
     return NULL;
 }
 
+void* nwipe_unraid( void* ptr )
+{
+    /**
+     * Fill the device with zeroes and add after the Unraid preclear signature.
+     * The signature and verification are handled inside the nwipe_runmethod().
+     */
+
+    nwipe_context_t* c;
+    c = (nwipe_context_t*) ptr;
+
+    /* get current time at the start of the wipe  */
+    time( &c->start_time );
+
+    /* set wipe in progress flag for GUI */
+    c->wipe_status = 1;
+
+    /* setup for a zero-fill. */
+    char zerofill[1] = { '\x00' };
+    nwipe_pattern_t patterns[] = { { 1, &zerofill[0] },  // pass 1: 0s
+                                   { 0, NULL } };
+
+    /* Run the method. */
+    c->result = nwipe_runmethod( c, patterns );
+
+    /* Finished. Set the wipe_status flag so that the GUI knows */
+    c->wipe_status = 0;
+
+    /* get current time at the end of the wipe  */
+    time( &c->end_time );
+
+    return NULL;
+} /* nwipe_unraid */
+
 int nwipe_runmethod( nwipe_context_t* c, nwipe_pattern_t* patterns )
 {
     /**
@@ -1055,7 +1093,56 @@ int nwipe_runmethod( nwipe_context_t* c, nwipe_pattern_t* patterns )
 
     } /* while rounds */
 
-    if( nwipe_options.method == &nwipe_ops2 )
+    if( nwipe_options.method == &nwipe_unraid )
+    {
+        if( nwipe_options.verify == NWIPE_VERIFY_LAST || nwipe_options.verify == NWIPE_VERIFY_ALL )
+        {
+            if( c->verify_errors != 0 )
+            {
+                nwipe_log( NWIPE_LOG_FATAL,
+                           "'%s' has verification errors, cannot write Unraid preclear signature",
+                           c->device_name );
+
+                return -1;
+            }
+        }
+
+        /* Write the Unraid preclear signature (after everything else is done) */
+
+        nwipe_log( NWIPE_LOG_NOTICE, "Attemping to write Unraid preclear signature to '%s'", c->device_name );
+
+        c->pass_type = NWIPE_PASS_WRITE;
+        r = nwipe_unraid_signature( c );
+        c->pass_type = NWIPE_PASS_NONE;
+
+        nwipe_log( NWIPE_LOG_NOTICE, "%llu bytes written to %s", c->pass_done, c->device_name );
+
+        if( r < 0 )
+        {
+            return r;
+        }
+
+        nwipe_log( NWIPE_LOG_NOTICE, "Unraid preclear signature written to '%s'", c->device_name );
+
+        /* Verify the Unraid preclear signature (always, as it's just one block) */
+
+        nwipe_log( NWIPE_LOG_NOTICE, "Attemping to verify Unraid preclear signature on '%s'", c->device_name );
+
+        c->pass_type = NWIPE_PASS_VERIFY;
+        r = nwipe_unraid_signature_verify( c );
+        c->pass_type = NWIPE_PASS_NONE;
+
+        nwipe_log( NWIPE_LOG_NOTICE, "%llu bytes read from '%s'", c->pass_done, c->device_name );
+
+        if( r < 0 )
+        {
+            return r;
+        }
+
+        nwipe_log( NWIPE_LOG_NOTICE, "Unraid preclear signature is valid on '%s'", c->device_name );
+    }
+
+    else if( nwipe_options.method == &nwipe_ops2 )
     {
         /* NOTE: The OPS-II method specifically requires that a random pattern be left on the device. */
 
@@ -1276,6 +1363,7 @@ void calculate_round_size( nwipe_context_t* c )
                               &nwipe_gutmann,
                               &nwipe_random,
                               &nwipe_is5enh,
+                              &nwipe_unraid,
                               NULL };
     int i;
 
@@ -1428,6 +1516,15 @@ void calculate_round_size( nwipe_context_t* c )
             {
                 c->round_size += ( c->device_size * c->round_count );
             }
+
+            break;
+
+        case 7:
+            /* Unraid Preclear
+             * ----------------- */
+
+            /* Preclear signature write + verify (one block each) */
+            c->round_size += (u64) ( c->device_stat.st_blksize * 2 );
 
             break;
 

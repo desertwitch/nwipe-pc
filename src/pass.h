@@ -27,6 +27,8 @@ int nwipe_random_pass( nwipe_context_t* c );
 int nwipe_random_verify( nwipe_context_t* c );
 int nwipe_static_pass( nwipe_context_t* c, nwipe_pattern_t* pattern );
 int nwipe_static_verify( nwipe_context_t* c, nwipe_pattern_t* pattern );
+int nwipe_unraid_signature( nwipe_context_t* c );
+int nwipe_unraid_signature_verify( nwipe_context_t* c );
 
 void test_functionn( int count, nwipe_context_t** c );
 

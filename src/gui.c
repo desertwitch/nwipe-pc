@@ -158,6 +158,9 @@ const char* main_window_footer_warning_no_blanking_with_ops2 =
 const char* main_window_footer_warning_no_blanking_with_verify_only =
     "  WARNING: Zero blanking is not allowed with verify method  ";
 
+const char* main_window_footer_warning_no_blanking_with_unraid =
+    "  WARNING: Zero blanking is not allowed with unraid method  ";
+
 const char* main_window_footer_warning_no_drive_selected =
     "  No drives selected, use spacebar to select a drive, then press S to start  ";
 
@@ -1238,6 +1241,22 @@ void nwipe_gui_select( int count, nwipe_context_t** c )
                         break;
                     }
 
+                    if( nwipe_options.method == &nwipe_unraid )
+                    {
+                        /* Warn the user about that zero blanking with the unraid method is not allowed */
+                        wattron( footer_window, COLOR_PAIR( 10 ) );
+                        nwipe_gui_amend_footer_window( main_window_footer_warning_no_blanking_with_unraid );
+                        doupdate();
+                        sleep( 3 );
+                        wattroff( footer_window, COLOR_PAIR( 10 ) );
+
+                        /* After the delay return footer text back to key help */
+                        nwipe_gui_amend_footer_window( *p_main_window_footer );
+                        doupdate();
+
+                        break;
+                    }
+
                     if( nwipe_options.method == &nwipe_verify_zero || nwipe_options.method == &nwipe_verify_one )
                     {
                         /* Warn the user about that zero blanking with the ops2 method is not allowed */
@@ -1469,9 +1488,9 @@ void nwipe_gui_options( void )
 
     mvwprintw( options_window, NWIPE_GUI_OPTIONS_ROUNDS_Y, NWIPE_GUI_OPTIONS_ROUNDS_X, "Rounds:  " );
 
-    /* Disable blanking for ops2 and verify methods */
+    /* Disable blanking for ops2, verify and unraid methods */
     if( nwipe_options.method == &nwipe_ops2 || nwipe_options.method == &nwipe_verify_zero
-        || nwipe_options.method == &nwipe_verify_one )
+        || nwipe_options.method == &nwipe_verify_one || nwipe_options.method == &nwipe_unraid )
     {
         nwipe_options.noblank = 1;
     }
@@ -2305,7 +2324,7 @@ void nwipe_gui_method( void )
     extern int terminate_signal;
 
     /* The number of implemented methods. */
-    const int count = 11;
+    const int count = 12;
 
     /* The first tabstop. */
     const int tab1 = 2;
@@ -2371,6 +2390,10 @@ void nwipe_gui_method( void )
     {
         focus = 10;
     }
+    if( nwipe_options.method == &nwipe_unraid )
+    {
+        focus = 11;
+    }
 
     do
     {
@@ -2394,6 +2417,7 @@ void nwipe_gui_method( void )
         mvwprintw( main_window, yy++, tab1, "  %s", nwipe_method_label( &nwipe_verify_one ) );
         mvwprintw( main_window, yy++, tab1, "  %s", nwipe_method_label( &nwipe_is5enh ) );
         mvwprintw( main_window, yy++, tab1, "  %s", nwipe_method_label( &nwipe_bruce7 ) );
+        mvwprintw( main_window, yy++, tab1, "  %s", nwipe_method_label( &nwipe_unraid ) );
         mvwprintw( main_window, yy++, tab1, "                                             " );
 
         /* Print the cursor. */
@@ -2543,6 +2567,17 @@ void nwipe_gui_method( void )
                 mvwprintw( main_window, 11, tab2, "generated random data to maximize security.       " );
                 break;
 
+            case 11:
+
+                mvwprintw( main_window, 2, tab2, "Security Level: high (1 pass)" );
+
+                mvwprintw( main_window, 4, tab2, "This method fills the device with zeros first,    " );
+                mvwprintw( main_window, 5, tab2, "then writes an Unraid-specific signature, which   " );
+                mvwprintw( main_window, 6, tab2, "allows the Unraid operating system to detect it   " );
+                mvwprintw( main_window, 7, tab2, "as sufficiently cleared for instant array usage.  " );
+
+                break;
+
         } /* switch */
 
         /* Add a border. */
@@ -2640,6 +2675,10 @@ void nwipe_gui_method( void )
 
         case 10:
             nwipe_options.method = &nwipe_bruce7;
+            break;
+
+        case 11:
+            nwipe_options.method = &nwipe_unraid;
             break;
     }
 
