@@ -1,4 +1,5 @@
 # nwipe-pc
+[![ci-ubuntu-latest](https://github.com/desertwitch/nwipe-pc/actions/workflows/ci-ubuntu-latest.yml/badge.svg)](https://github.com/desertwitch/nwipe-pc/actions/workflows/ci-ubuntu-latest.yml)
 [![docker-package](https://github.com/desertwitch/nwipe-pc/actions/workflows/docker-package.yml/badge.svg)](https://github.com/desertwitch/nwipe-pc/actions/workflows/docker-package.yml)
 
 **nwipe-pc is a fork of nwipe, with patched-in support for pre-clearing disks for Unraid.**
