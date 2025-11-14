@@ -1,4 +1,6 @@
 # nwipe-pc
+[![ci-clang-format](https://github.com/desertwitch/nwipe-pc/actions/workflows/ci-clang-format.yml/badge.svg)](https://github.com/desertwitch/nwipe-pc/actions/workflows/ci-clang-format.yml)
+[![ci-ubuntu-latest](https://github.com/desertwitch/nwipe-pc/actions/workflows/ci-ubuntu-latest.yml/badge.svg)](https://github.com/desertwitch/nwipe-pc/actions/workflows/ci-ubuntu-latest.yml)
 [![docker-package](https://github.com/desertwitch/nwipe-pc/actions/workflows/docker-package.yml/badge.svg)](https://github.com/desertwitch/nwipe-pc/actions/workflows/docker-package.yml)
 
 **nwipe-pc is a fork of nwipe, with patched-in support for pre-clearing disks for Unraid.**
@@ -10,7 +12,9 @@ This is the primary reason the binary name remains the same for now (for drop-in
 You can use it both on Unraid itself or other Linux distributions (compiled or containerized):
 
 ### Use on Unraid:
-Install the _nwipe (with Preclear)_ plugin from _Apps_ - it comes with this flavor of nwipe.
+Install the **nwipe (with Preclear)** plugin from the **Apps** tab - it comes with this fork of nwipe.
+
+https://github.com/desertwitch/nwipe-unRAID
 
 ### Use with Docker:
 Minimal permissions (pass through of individual devices):
