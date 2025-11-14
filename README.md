@@ -10,7 +10,9 @@ This is the primary reason the binary name remains the same for now (for drop-in
 You can use it both on Unraid itself or other Linux distributions (compiled or containerized):
 
 ### Use on Unraid:
-Install the _nwipe (with Preclear)_ plugin from _Apps_ - it comes with this flavor of nwipe.
+Install the **nwipe (with Preclear)** plugin from the **Apps** tab - it comes with this fork of nwipe.
+
+https://github.com/desertwitch/nwipe-unRAID
 
 ### Use with Docker:
 Minimal permissions (pass through of individual devices):
