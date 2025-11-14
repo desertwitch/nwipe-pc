@@ -15,4 +15,4 @@ Nick Law <shredos.eraser@gmail.com> (@PartialVolume) and others\n\
 This is free software; see the source for copying conditions.\n\
 There is NO warranty; not even for MERCHANTABILITY or FITNESS\n\
 FOR A PARTICULAR PURPOSE.\n";
-const char* banner = "nwipe 0.39";
+const char* banner = "nwipe-pc 0.39";

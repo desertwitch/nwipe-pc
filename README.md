@@ -1,3 +1,32 @@
+# nwipe-pc
+[![Create and publish a Docker image](https://github.com/desertwitch/nwipe-pc/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/desertwitch/nwipe-pc/actions/workflows/docker-publish.yml)
+
+nwipe-pc is a fork of nwipe, with patched-in support for pre-clearing disks for Unraid.
+
+It is eventually planned to be submitted for upstreaming into nwipe (when fully stable).
+
+This is the primary reason the binary name remains the same for now (for drop-in usage).
+
+You can use it both on Unraid itself or other Linux distributions (compiled or containerized):
+
+### Use on Unraid:
+Install the _nwipe (with Preclear)_ plugin from _Apps_ - it comes with this flavor of nwipe.
+
+### Use with Docker:
+Minimal permissions (pass through of individual devices):
+```bash
+docker run --rm -it --device /dev/sda:/dev/sda --device /dev/sdb:/dev/sdb ghcr.io/desertwitch/nwipe-pc:latest
+```
+Privileged permissions (all features and devices available):
+```bash
+docker run --rm -it --privileged ghcr.io/desertwitch/nwipe-pc:latest
+```
+
+> To access nwipe's generated PDF files, add a volume mount on `/app` (e.g. `-v ./pdfs:/app`).
+
+### Use without Docker:
+To build from source, follow the compilation instructions outlined in the regular manual.
+
 # nwipe
 ![GitHub CI badge](https://github.com/martijnvanbrummelen/nwipe/workflows/ci_ubuntu_latest/badge.svg)
 [![GitHub release](https://img.shields.io/github/release/martijnvanbrummelen/nwipe)](https://github.com/martijnvanbrummelen/nwipe/releases/)
