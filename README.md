@@ -1,7 +1,7 @@
 # nwipe-pc
 [![Create and publish a Docker image](https://github.com/desertwitch/nwipe-pc/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/desertwitch/nwipe-pc/actions/workflows/docker-publish.yml)
 
-nwipe-pc is a fork of nwipe, with patched-in support for pre-clearing disks for Unraid.
+**nwipe-pc is a fork of nwipe, with patched-in support for pre-clearing disks for Unraid.**
 
 It is eventually planned to be submitted for upstreaming into nwipe (when fully stable).
 
