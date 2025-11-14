@@ -1,13 +1,8 @@
 FROM alpine:3.22
 
-LABEL org.opencontainers.image.source=https://github.com/desertwitch/nwipe-pc
-LABEL org.opencontainers.image.description="nwipe secure disk eraser, with patched-in support for pre-clearing disks for Unraid."
-
 ADD https://github.com/desertwitch/nwipe-pc.git /tmp/nwipe
 
 WORKDIR /tmp/nwipe
-
-ENV TERM=xterm
 
 RUN apk update && \
     apk upgrade && \
@@ -35,5 +30,7 @@ RUN apk update && \
     rm -rf nwipe
 
 WORKDIR /app
+
+ENV TERM=xterm
 
 CMD ["/usr/local/bin/nwipe"]
