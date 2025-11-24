@@ -28,7 +28,14 @@ docker run --rm -it --privileged ghcr.io/desertwitch/nwipe-pc:latest
 
 > To access nwipe's generated PDF files, add a volume mount on `/app` (e.g. `-v ./pdfs:/app`).
 
-### Use without Docker:
+### Use as a Linux Live CD/USB:
+
+A forked version of ShredOS with the Unraid features is available here:
+
+https://github.com/desertwitch/shredos-pc/releases
+
+### Use building from source:
+
 To build from source, follow the compilation instructions outlined in the regular manual.
 
 # nwipe
