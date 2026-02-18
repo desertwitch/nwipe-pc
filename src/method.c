@@ -1611,7 +1611,7 @@ void calculate_round_size( nwipe_context_t* c )
              * ----------------- */
 
             /* Preclear signature write + verify (one block each) */
-            c->round_size += (u64) ( c->device_stat.st_blksize * 2 );
+            c->round_size += (u64) ( nwipe_effective_io_blocksize( c ) * 2 );
 
             break;
 
