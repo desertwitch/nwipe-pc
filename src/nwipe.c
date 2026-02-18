@@ -27,6 +27,11 @@
 #define _POSIX_SOURCE
 #endif
 
+/* Enable GNU extensions so that O_DIRECT is visible from <fcntl.h>. */
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
+
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -59,6 +64,18 @@
 #include "hpa_dco.h"
 #include "conf.h"
 #include <libconfig.h>
+#include <fcntl.h> /* O_DIRECT, O_RDWR, ... */
+
+#ifdef NWIPE_USE_DIRECT_IO
+#ifndef O_DIRECT
+/*
+ * Some platforms or libcs do not define O_DIRECT at all. Defining it
+ * as 0 makes the flag a no-op and keeps the code buildable.
+ * On Linux/glibc, <fcntl.h> via nwipe.h will provide a real O_DIRECT.
+ */
+#define O_DIRECT 0
+#endif
+#endif
 
 int terminate_signal;
 int user_abort;
@@ -79,6 +96,189 @@ int devnamecmp( const void* a, const void* b )
     return ( ret );
 }
 
+static int nwipe_prng_bench_cmp_desc( const void* a, const void* b )
+{
+    const nwipe_prng_bench_result_t* A = (const nwipe_prng_bench_result_t*) a;
+    const nwipe_prng_bench_result_t* B = (const nwipe_prng_bench_result_t*) b;
+
+    /* successful results first */
+    if( A->rc != 0 && B->rc == 0 )
+        return 1;
+    if( A->rc == 0 && B->rc != 0 )
+        return -1;
+
+    /* then sort by MB/s */
+    if( A->mbps < B->mbps )
+        return 1;
+    if( A->mbps > B->mbps )
+        return -1;
+    return 0;
+}
+
+#define NWIPE_PDF_DIR_MODE ( S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH )
+/* -> 0755: rwx for owner, r-x for group and others */
+
+/* Helper: try to create and remove a temporary file inside the directory.
+ * This catches cases where access(path, W_OK) passes (especially as root)
+ * but the underlying filesystem does not allow creating regular files,
+ * e.g. /proc or other pseudo/readonly filesystems.
+ */
+static int nwipe_probe_directory_writable( const char* path )
+{
+    const char* suffix = "/.nwipe_pdf_testXXXXXX";
+    size_t path_len = strlen( path );
+    size_t suffix_len = strlen( suffix );
+    size_t total_len = path_len + suffix_len + 1; /* +1 for '\0' */
+
+    char* tmpl = (char*) malloc( total_len );
+    if( tmpl == NULL )
+    {
+        nwipe_log( NWIPE_LOG_ERROR, "Failed to allocate memory to probe PDFreportpath '%s'.", path );
+        return -1;
+    }
+
+    /* Build template "<path>/.nwipe_pdf_testXXXXXX" */
+    snprintf( tmpl, total_len, "%s%s", path, suffix );
+
+    int fd = mkstemp( tmpl );
+    if( fd < 0 )
+    {
+        nwipe_log( NWIPE_LOG_ERROR,
+                   "PDFreportpath '%s' is not writable (cannot create test file): %s.",
+                   path,
+                   strerror( errno ) );
+        free( tmpl );
+        return -1;
+    }
+
+    /* Successfully created a temporary file, now clean it up. */
+    close( fd );
+    if( unlink( tmpl ) != 0 )
+    {
+        /* Not fatal for our check, but log it anyway. */
+        nwipe_log( NWIPE_LOG_WARNING,
+                   "Failed to remove temporary test file '%s' in PDFreportpath '%s': %s.",
+                   tmpl,
+                   path,
+                   strerror( errno ) );
+    }
+
+    free( tmpl );
+    return 0;
+}
+
+static int nwipe_ensure_directory( const char* path )
+{
+    struct stat st;
+    char* tmp;
+    char* p;
+    size_t len;
+
+    if( path == NULL || path[0] == '\0' )
+    {
+        /* Empty path: nothing to do, treat as success. */
+        return 0;
+    }
+
+    /* 1. First try: does the path already exist? */
+    if( stat( path, &st ) == 0 )
+    {
+        /* Path exists; make sure it's a directory. */
+        if( !S_ISDIR( st.st_mode ) )
+        {
+            nwipe_log( NWIPE_LOG_ERROR, "PDFreportpath '%s' exists but is not a directory.", path );
+            return -1;
+        }
+
+        /* Even if access() says it's writable (especially as root),
+         * we still probe by actually creating a test file. */
+        if( nwipe_probe_directory_writable( path ) != 0 )
+        {
+            /* Detailed error already logged. */
+            return -1;
+        }
+
+        /* Everything is fine, directory already present and writable. */
+        return 0;
+    }
+
+    /* stat() failed: if this is not "does not exist", propagate the error. */
+    if( errno != ENOENT )
+    {
+        nwipe_log( NWIPE_LOG_ERROR, "Failed to stat PDFreportpath '%s': %s.", path, strerror( errno ) );
+        return -1;
+    }
+
+    /* 2. Directory does not exist -> create it recursively (mkdir -p style). */
+
+    len = strlen( path );
+    tmp = (char*) malloc( len + 1 );
+    if( tmp == NULL )
+    {
+        nwipe_log( NWIPE_LOG_ERROR, "Failed to allocate memory to create PDFreportpath '%s'.", path );
+        return -1;
+    }
+
+    memcpy( tmp, path, len + 1 );
+
+    /* Start at the beginning of the string.
+     * For absolute paths ("/foo/bar") we skip the leading slash so we do not
+     * try to create "/" itself. */
+    p = tmp;
+    if( tmp[0] == '/' )
+    {
+        p = tmp + 1;
+    }
+
+    for( ; *p; ++p )
+    {
+        if( *p == '/' )
+        {
+            *p = '\0';
+
+            /* Skip empty components (can happen with leading '/' or double '//'). */
+            if( tmp[0] != '\0' )
+            {
+                if( mkdir( tmp, NWIPE_PDF_DIR_MODE ) != 0 && errno != EEXIST )
+                {
+                    nwipe_log( NWIPE_LOG_ERROR,
+                               "Failed to create directory '%s' for PDFreportpath '%s': %s.",
+                               tmp,
+                               path,
+                               strerror( errno ) );
+                    free( tmp );
+                    return -1;
+                }
+            }
+
+            *p = '/';
+        }
+    }
+
+    /* Create the final directory component (the full path). */
+    if( mkdir( tmp, NWIPE_PDF_DIR_MODE ) != 0 && errno != EEXIST )
+    {
+        nwipe_log( NWIPE_LOG_ERROR,
+                   "Failed to create directory '%s' for PDFreportpath '%s': %s.",
+                   tmp,
+                   path,
+                   strerror( errno ) );
+        free( tmp );
+        return -1;
+    }
+
+    free( tmp );
+
+    /* 3. Final sanity check: ensure the path is writable by probing with a file. */
+    if( nwipe_probe_directory_writable( path ) != 0 )
+    {
+        /* Detailed error already logged. */
+        return -1;
+    }
+
+    return 0;
+}
+
 int main( int argc, char** argv )
 {
     int nwipe_optind;  // The result of nwipe_options().
@@ -96,9 +296,6 @@ int main( int argc, char** argv )
     char modprobe_command3[] = "/usr/sbin/modprobe %s";
     char module_shortform[50];
     char final_cmd_modprobe[sizeof( modprobe_command ) + sizeof( module_shortform )];
-
-    /* The entropy source file handle. */
-    int nwipe_entropy;
 
     /* The generic index variables. */
     int i;
@@ -161,6 +358,133 @@ int main( int argc, char** argv )
     /* Log OS info */
     nwipe_log_OSinfo();
 
+    /* ------------------------------------------------------------
+     * PRNG benchmark / auto-select (runs before device scan)
+     * ------------------------------------------------------------ */
+    if( nwipe_options.prng_benchmark_only || nwipe_options.prng_auto )
+    {
+        /* tune defaults */
+        const size_t io_block = 4 * 1024 * 1024; /* 4 MiB RAM buffer blocks */
+        double seconds = nwipe_options.prng_bench_seconds;
+
+        /* If user requested auto-select and didn't override seconds, keep it short */
+        if( nwipe_options.prng_auto )
+        {
+            if( seconds <= 0.0 )
+                seconds = 0.25;
+            /* Optional: if you consider "1.0" to be the default and want auto shorter:
+             * if( seconds == 1.0 ) seconds = 0.25;
+             */
+        }
+        else
+        {
+            if( seconds <= 0.0 )
+                seconds = 1.0;
+        }
+
+        nwipe_prng_bench_result_t results[16];
+        memset( results, 0, sizeof( results ) );
+
+        /* ------------------------------------------------------------
+         * --prng-benchmark-only path
+         * (keep output clean: no live "Testing..." lines by default)
+         * ------------------------------------------------------------ */
+        if( nwipe_options.prng_benchmark_only )
+        {
+            const int live_print = 0; /* set to 1 if you also want live here */
+
+            int n = nwipe_prng_benchmark_all_live(
+                seconds, io_block, results, (int) ( sizeof( results ) / sizeof( results[0] ) ), live_print );
+
+            if( n <= 0 )
+            {
+                nwipe_log( NWIPE_LOG_ERROR, "PRNG benchmark failed (no results)." );
+                printf( "PRNG benchmark failed (no results).\n" );
+                cleanup();
+                exit( 3 );
+            }
+
+            qsort( results, (size_t) n, sizeof( results[0] ), nwipe_prng_bench_cmp_desc );
+
+            /* Print to console + log */
+            printf( "\nPRNG Benchmark (RAM-only) ~%.2fs each, block=%zu MiB\n", seconds, io_block / ( 1024 * 1024 ) );
+            printf( "---------------------------------------------------\n" );
+
+            nwipe_log( NWIPE_LOG_INFO,
+                       "PRNG Benchmark (RAM-only) ~%.2fs each, block=%zu MiB",
+                       seconds,
+                       io_block / ( 1024 * 1024 ) );
+
+            for( int i = 0; i < n; i++ )
+            {
+                if( results[i].rc == 0 )
+                {
+                    printf( "%2d) %-40s %10.1f MB/s\n", i + 1, results[i].prng->label, results[i].mbps );
+                    nwipe_log( NWIPE_LOG_INFO,
+                               "PRNG bench %2d) %-40s %10.1f MB/s",
+                               i + 1,
+                               results[i].prng->label,
+                               results[i].mbps );
+                }
+                else
+                {
+                    printf( "%2d) %-40s (failed: rc=%d)\n", i + 1, results[i].prng->label, results[i].rc );
+                    nwipe_log( NWIPE_LOG_WARNING,
+                               "PRNG bench %2d) %-40s (failed: rc=%d)",
+                               i + 1,
+                               results[i].prng->label,
+                               results[i].rc );
+                }
+            }
+
+            printf( "\n" );
+            cleanup();
+            exit( 0 );
+        }
+
+        /* ------------------------------------------------------------
+         * --prng=auto path
+         * (THIS is the path where live output matters for “GUI delay”)
+         * ------------------------------------------------------------ */
+        if( nwipe_options.prng_auto )
+        {
+            /* live_print=1: prints:
+             *  - "Analysing PRNG performance:" immediately (with spinner)
+             *  - "Testing <PRNG> performance..." per PRNG
+             *  - "<PRNG> -> xx.x MB/s" immediately after each PRNG
+             */
+            const int live_print = 1;
+
+            /* Option A (preferred): make select_fastest call the live benchmark internally.
+             *   best = nwipe_prng_select_fastest(seconds, io_block, results, count);
+             * and inside select_fastest use nwipe_prng_benchmark_all_live(..., 1)
+             *
+             * Option B: benchmark here (live), then choose best locally.
+             * Since you already have nwipe_prng_select_fastest(), stick with Option A.
+             */
+
+            const nwipe_prng_t* best = nwipe_prng_select_fastest(
+                seconds, io_block, results, (int) ( sizeof( results ) / sizeof( results[0] ) ) /* results_count */
+                /* ensure select_fastest uses nwipe_prng_benchmark_all_live(..., live_print) */
+            );
+
+            if( best != NULL )
+            {
+                /* Apply selection */
+                nwipe_options.prng = (nwipe_prng_t*) best;
+
+                nwipe_log( NWIPE_LOG_INFO, "Auto-selected fastest PRNG: %s", best->label );
+                printf( "Auto-selected fastest PRNG: %s\n", best->label );
+            }
+            else
+            {
+                nwipe_log( NWIPE_LOG_WARNING,
+                           "Auto PRNG selection: no working PRNG found, keeping configured default." );
+                printf( "Auto PRNG selection: no working PRNG found, keeping configured default.\n" );
+            }
+        }
+    }
+
     /* Check that hdparm exists, we use hdparm for some HPA/DCO detection etc, if not
      * exit nwipe. These checks are required if the PATH environment is not setup !
      * Example: Debian sid 'su' as opposed to 'su -'
@@ -184,12 +508,14 @@ int main( int argc, char** argv )
         }
     }
 
-    /* Check if the given path for PDF reports is a writeable directory */
+    /* Check if the given path for PDF reports is a writeable directory.
+     * If it does not exist, try to create it (mkdir -p style).
+     */
     if( strcmp( nwipe_options.PDFreportpath, "noPDF" ) != 0 )
     {
-        if( access( nwipe_options.PDFreportpath, W_OK ) != 0 )
+        if( nwipe_ensure_directory( nwipe_options.PDFreportpath ) != 0 )
         {
-            nwipe_log( NWIPE_LOG_ERROR, "PDFreportpath %s is not a writeable directory.", nwipe_options.PDFreportpath );
+            /* nwipe_ensure_directory already logged a detailed error message. */
             cleanup();
             exit( 2 );
         }
@@ -255,21 +581,6 @@ int main( int argc, char** argv )
         cleanup();
         exit( 1 );
     }
-
-    /* Open the entropy source. */
-    nwipe_entropy = open( NWIPE_KNOB_ENTROPY, O_RDONLY );
-
-    /* Check the result. */
-    if( nwipe_entropy < 0 )
-    {
-        nwipe_perror( errno, __FUNCTION__, "open" );
-        nwipe_log( NWIPE_LOG_FATAL, "Unable to open entropy source %s.", NWIPE_KNOB_ENTROPY );
-        cleanup();
-        free( c2 );
-        return errno;
-    }
-
-    nwipe_log( NWIPE_LOG_NOTICE, "Opened entropy source '%s'.", NWIPE_KNOB_ENTROPY );
 
     /* Block relevant signals in main thread. Any other threads that are     */
     /*        created after this will also block those signals.              */
@@ -359,10 +670,7 @@ int main( int argc, char** argv )
     for( i = 0; i < nwipe_enumerated; i++ )
     {
 
-        /* Set the entropy source. */
-        c1[i]->entropy_fd = nwipe_entropy;
-
-        if( nwipe_options.autonuke )
+        if( nwipe_options.autonuke == 1 )
         {
             /* When the autonuke option is set, select all disks. */
             // TODO - partitions
@@ -410,33 +718,54 @@ int main( int argc, char** argv )
         &nwipe_temperature_thread, NULL, nwipe_update_temperature_thread, &nwipe_temperature_thread_data );
 
     /* Start the ncurses interface. */
-    if( !nwipe_options.nogui )
-        nwipe_gui_init();
-
-    if( nwipe_options.autonuke == 1 )
+    switch( nwipe_options.nogui )
     {
-        /* Print the options window. */
-        if( !nwipe_options.nogui )
-            nwipe_gui_options();
+        case 0:
+            nwipe_gui_init();
+            break;
+
+        case 1:
+            break;
+
+        default:
+            printf( "system error: nwipe_options.nogui (should be 0 or 1) is invalid, nwipe_options.nogui=%i !? \n",
+                    nwipe_options.nogui );
     }
-    else
-    {
-        /* Get device selections from the user. */
-        if( nwipe_options.nogui )
-        {
-            printf( "--nogui option must be used with autonuke option\n" );
-            cleanup();
-            exit( 1 );
-        }
-        else
-        {
-            if( nwipe_options.PDF_preview_details == 1 )
-            {
-                nwipe_gui_preview_org_customer( SHOWING_PRIOR_TO_DRIVE_SELECTION );
-            }
 
-            nwipe_gui_select( nwipe_enumerated, c1 );
-        }
+    switch( nwipe_options.autonuke )
+    {
+        case 0:
+            /* The user can't specify the nogui option without also using the autonuke option */
+            if( nwipe_options.nogui == 1 )
+            {
+                printf( "--nogui option must be used with autonuke option\n" );
+                cleanup();
+                exit( 1 );
+            }
+            else
+            {
+                /* If selected show customer and organisation details BEFORE drive selection screen */
+                if( nwipe_options.PDF_preview_details == 1 )
+                {
+                    nwipe_gui_preview_org_customer( SHOWING_PRIOR_TO_DRIVE_SELECTION );
+                }
+
+                /* Get device selections from the user. */
+                nwipe_gui_select( nwipe_enumerated, c1 );
+            }
+            break;
+
+        case 1:
+            /* Print the options window. */
+            if( !nwipe_options.nogui )
+                nwipe_gui_options();
+
+            break;
+
+        default:
+            printf(
+                "system error: nwipe_options.autonuke (should be 0 or 1) is invalid, nwipe_options.autonuke=%i !? \n",
+                nwipe_options.autonuke );
     }
 
     /* Initialise some of the variables in the drive contexts
@@ -499,8 +828,82 @@ int main( int argc, char** argv )
             /* Initialise the wipe_status flag, -1 = wipe not yet started */
             c2[i]->wipe_status = -1;
 
-            /* Open the file for reads and writes. */
-            c2[i]->device_fd = open( c2[i]->device_name, O_RDWR );
+            /* Open the file for reads and writes, honoring the configured I/O mode. */
+            int open_flags = O_RDWR;
+
+#ifdef NWIPE_USE_DIRECT_IO
+            /*
+             * Decide whether to request O_DIRECT based on the runtime I/O mode:
+             *   auto   -> try O_DIRECT, fall back to cached I/O if needed
+             *   direct -> force O_DIRECT, fail hard if not supported
+             *   cached -> do not request O_DIRECT at all
+             */
+            if( nwipe_options.io_mode == NWIPE_IO_MODE_DIRECT || nwipe_options.io_mode == NWIPE_IO_MODE_AUTO )
+            {
+                open_flags |= O_DIRECT;
+            }
+#endif
+
+            c2[i]->device_fd = open( c2[i]->device_name, open_flags );
+
+#ifdef NWIPE_USE_DIRECT_IO
+            if( c2[i]->device_fd < 0 && ( errno == EINVAL || errno == EOPNOTSUPP ) )
+            {
+                if( nwipe_options.io_mode == NWIPE_IO_MODE_DIRECT )
+                {
+                    /*
+                     * User explicitly requested direct I/O: do not silently
+                     * fall back. Mark the device as unusable and continue.
+                     */
+                    nwipe_perror( errno, __FUNCTION__, "open" );
+                    nwipe_log( NWIPE_LOG_FATAL,
+                               "O_DIRECT requested via --directio but not supported on '%s'.",
+                               c2[i]->device_name );
+                    c2[i]->select = NWIPE_SELECT_DISABLED;
+                    continue;
+                }
+                else if( nwipe_options.io_mode == NWIPE_IO_MODE_AUTO )
+                {
+                    /*
+                     * Auto mode: transparently fall back to cached I/O and
+                     * log a warning.
+                     */
+                    nwipe_log( NWIPE_LOG_WARNING,
+                               "O_DIRECT not supported on '%s', falling back to cached I/O.",
+                               c2[i]->device_name );
+
+                    open_flags &= ~O_DIRECT;
+                    c2[i]->device_fd = open( c2[i]->device_name, open_flags );
+                }
+            }
+
+            if( c2[i]->device_fd >= 0 )
+            {
+                const char* io_desc;
+
+                if( open_flags & O_DIRECT )
+                {
+                    io_desc = "direct I/O (O_DIRECT)";
+                    c2[i]->io_mode = NWIPE_IO_MODE_DIRECT;
+                }
+                else
+                {
+                    io_desc = "cached I/O";
+                    c2[i]->io_mode = NWIPE_IO_MODE_CACHED;
+                }
+
+                nwipe_log( NWIPE_LOG_NOTICE, "Using %s on device '%s'.", io_desc, c2[i]->device_name );
+            }
+#endif /* NWIPE_USE_DIRECT_IO */
+
+            /* Check the open() result (after any fallback logic). */
+            if( c2[i]->device_fd < 0 )
+            {
+                nwipe_perror( errno, __FUNCTION__, "open" );
+                nwipe_log( NWIPE_LOG_WARNING, "Unable to open device '%s'.", c2[i]->device_name );
+                c2[i]->select = NWIPE_SELECT_DISABLED;
+                continue;
+            }
 
             /* Check the open() result. */
             if( c2[i]->device_fd < 0 )

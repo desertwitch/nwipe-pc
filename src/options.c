@@ -28,6 +28,8 @@
 #include "logging.h"
 #include "version.h"
 #include "conf.h"
+#include "cpu_features.h"
+#include "libconfig.h"
 
 /* The global options struct. */
 nwipe_options_t nwipe_options;
@@ -44,6 +46,11 @@ int nwipe_options_parse( int argc, char** argv )
     extern nwipe_prng_t nwipe_isaac64;
     extern nwipe_prng_t nwipe_add_lagg_fibonacci_prng;
     extern nwipe_prng_t nwipe_xoroshiro256_prng;
+    extern nwipe_prng_t nwipe_aes_ctr_prng;
+
+    extern config_t nwipe_cfg;
+    config_setting_t* setting;
+    const char* user_defined_tag;
 
     /* The getopt() result holder. */
     int nwipe_opt;
@@ -73,7 +80,7 @@ int nwipe_options_parse( int argc, char** argv )
         { "autopoweroff", no_argument, 0, 0 },
 
         /* A GNU standard option. Corresponds to the 'h' short option. */
-        { "help", no_argument, 0, 'h' },
+        { "help", no_argument, 0, 0 },
 
         /* The wipe method. Corresponds to the 'm' short option. */
         { "method", required_argument, 0, 'm' },
@@ -89,6 +96,8 @@ int nwipe_options_parse( int argc, char** argv )
 
         /* The Pseudo Random Number Generator. */
         { "prng", required_argument, 0, 'p' },
+        { "prng-benchmark", no_argument, 0, 0 },
+        { "prng-bench-seconds", required_argument, 0, 0 },
 
         /* The number of times to run the method. */
         { "rounds", required_argument, 0, 'r' },
@@ -109,7 +118,7 @@ int nwipe_options_parse( int argc, char** argv )
         { "nogui", no_argument, 0, 0 },
 
         /* Whether to anonymize the serial numbers. */
-        { "quiet", no_argument, 0, 'q' },
+        { "quiet", no_argument, 0, 0 },
 
         /* A flag to indicate whether the devices would be opened in sync mode. */
         { "sync", required_argument, 0, 0 },
@@ -117,11 +126,18 @@ int nwipe_options_parse( int argc, char** argv )
         /* Verify that wipe patterns are being written to the device. */
         { "verify", required_argument, 0, 0 },
 
-        /* Display program version. */
-        { "verbose", no_argument, 0, 'v' },
+        /* I/O mode selection: auto/direct/cached. */
+        { "directio", no_argument, 0, 0 },
+        { "cachedio", no_argument, 0, 0 },
+
+        /* Enables a field on the PDF that holds a tag that identifies the host computer */
+        { "pdftag", no_argument, 0, 0 },
 
         /* Display program version. */
-        { "version", no_argument, 0, 'V' },
+        { "verbose", no_argument, 0, 0 },
+
+        /* Display program version. */
+        { "version", no_argument, 0, 0 },
 
         /* Requisite padding for getopt(). */
         { 0, 0, 0, 0 } };
@@ -130,8 +146,30 @@ int nwipe_options_parse( int argc, char** argv )
     nwipe_options.autonuke = 0;
     nwipe_options.autopoweroff = 0;
     nwipe_options.method = &nwipe_random;
-    nwipe_options.prng =
-        ( sizeof( unsigned long int ) >= 8 ) ? &nwipe_xoroshiro256_prng : &nwipe_add_lagg_fibonacci_prng;
+    nwipe_options.prng_auto = 1; /* by default the PRNG is selected through the benchmark selection */
+    nwipe_options.prng_benchmark_only = 0;
+    nwipe_options.prng_bench_seconds = 1.0; /* default for interactive / manual */
+
+    /*
+     * Determines and sets the default PRNG based on AES-NI support and system architecture.
+     * It selects AES-CTR PRNG if AES-NI is supported, xoroshiro256 for 64-bit systems without AES-NI,
+     * and add lagged Fibonacci for 32-bit systems.
+     */
+
+    if( has_aes_ni() )
+    {
+        nwipe_options.prng = &nwipe_aes_ctr_prng;
+    }
+    else if( sizeof( unsigned long int ) >= 8 )
+    {
+        nwipe_options.prng = &nwipe_xoroshiro256_prng;
+        nwipe_log( NWIPE_LOG_WARNING, "CPU doesn't support AES New Instructions, opting for XORoshiro-256 instead." );
+    }
+    else
+    {
+        nwipe_options.prng = &nwipe_add_lagg_fibonacci_prng;
+    }
+
     nwipe_options.rounds = 1;
     nwipe_options.noblank = 0;
     nwipe_options.nousb = 0;
@@ -142,11 +180,16 @@ int nwipe_options_parse( int argc, char** argv )
     nwipe_options.sync = DEFAULT_SYNC_RATE;
     nwipe_options.verbose = 0;
     nwipe_options.verify = NWIPE_VERIFY_LAST;
+    nwipe_options.io_mode = NWIPE_IO_MODE_AUTO; /* Default: auto-select I/O mode. */
+    nwipe_options.PDF_toggle_host_info = 0; /* Default: host visibility on PDF disabled */
+    nwipe_options.PDFtag = 0;
     memset( nwipe_options.logfile, '\0', sizeof( nwipe_options.logfile ) );
     memset( nwipe_options.PDFreportpath, '\0', sizeof( nwipe_options.PDFreportpath ) );
     strncpy( nwipe_options.PDFreportpath, ".", 2 );
 
-    /* Read PDF settings from nwipe.conf if available  */
+    /*
+     * Read PDF Enable/Disable settings from nwipe.conf if available
+     */
     if( ( ret = nwipe_conf_read_setting( "PDF_Certificate.PDF_Enable", &read_value ) ) )
     {
         /* error occurred */
@@ -180,7 +223,63 @@ int nwipe_options_parse( int argc, char** argv )
         }
     }
 
-    /* PDF Preview enable/disable */
+    /*
+     * Read PDF host visibility settings from nwipe.conf if available
+     */
+    if( ( ret = nwipe_conf_read_setting( "PDF_Certificate.PDF_Host_Visibility", &read_value ) ) )
+    {
+        /* error occurred */
+        nwipe_log(
+            NWIPE_LOG_ERROR,
+            "nwipe_conf_read_setting():Error reading PDF_Certificate.PDF_toggle_host_info from nwipe.conf, ret code %i",
+            ret );
+
+        nwipe_options.PDF_toggle_host_info = 0; /* Disable host visibility on PDF */
+    }
+    else
+    {
+        if( !strcmp( read_value, "ENABLED" ) )
+        {
+            nwipe_options.PDF_toggle_host_info = 1;
+        }
+        else
+        {
+            if( !strcmp( read_value, "DISABLED" ) )
+            {
+                nwipe_options.PDF_toggle_host_info = 0;
+            }
+            else
+            {
+                // error occurred
+                nwipe_log( NWIPE_LOG_ERROR,
+                           "PDF_Certificate.PDF_toggle_host_info in nwipe.conf returned a value that was neither "
+                           "ENABLED or DISABLED" );
+                nwipe_options.PDF_toggle_host_info = 0;  // Default to disabled
+            }
+        }
+    }
+
+    /*
+     * Read PDF tag Enable/Disable settings from nwipe.conf if available
+     */
+
+    setting = config_lookup( &nwipe_cfg, "PDF_Certificate" );
+
+    if( config_setting_lookup_string( setting, "User_Defined_Tag", &user_defined_tag ) )
+    {
+        if( user_defined_tag[0] != 0 )
+        {
+            nwipe_options.PDFtag = 1;
+        }
+        else
+        {
+            nwipe_options.PDFtag = 0;
+        }
+    }
+
+    /*
+     * PDF Preview enable/disable
+     */
     if( ( ret = nwipe_conf_read_setting( "PDF_Certificate.PDF_Preview", &read_value ) ) )
     {
         /* error occurred */
@@ -214,7 +313,9 @@ int nwipe_options_parse( int argc, char** argv )
         }
     }
 
-    /* Initialise each of the strings in the excluded drives array */
+    /*
+     * Initialise each of the strings in the excluded drives array
+     */
     for( i = 0; i < MAX_NUMBER_EXCLUDED_DRIVES; i++ )
     {
         nwipe_options.exclude[i][0] = 0;
@@ -238,51 +339,193 @@ int nwipe_options_parse( int argc, char** argv )
 
                 if( strcmp( nwipe_options_long[i].name, "autonuke" ) == 0 )
                 {
-                    nwipe_options.autonuke = 1;
-                    break;
+                    /* check for the full option name, as getopt_long() allows abreviations and can lead to unintended
+                     * consequences when the user makes a typo */
+                    if( strcmp( argv[optind - 1], "--autonuke" ) == 0 )
+                    {
+                        nwipe_options.autonuke = 1;
+                        break;
+                    }
+                    else
+                    {
+                        fprintf( stderr,
+                                 "Error: Strict command line options required, did you mean --autonuke?, you typed "
+                                 "%s.\nType `sudo nwipe --help` for options \n",
+                                 argv[optind - 1] );
+                        exit( EINVAL );
+                    }
                 }
 
                 if( strcmp( nwipe_options_long[i].name, "autopoweroff" ) == 0 )
                 {
-                    nwipe_options.autopoweroff = 1;
-                    break;
+                    /* check for the full option name, as getopt_long() allows abreviations and can lead to unintended
+                     * consequences when the user makes a typo */
+                    if( strcmp( argv[optind - 1], "--autopoweroff" ) == 0 )
+                    {
+                        nwipe_options.autopoweroff = 1;
+                        break;
+                    }
+                    else
+                    {
+                        fprintf( stderr,
+                                 "Error: Strict command line options required, did you mean --autopoweroff?, you typed "
+                                 "%s.\nType `sudo nwipe --help` for options \n",
+                                 argv[optind - 1] );
+                        exit( EINVAL );
+                    }
+                }
+
+                if( strcmp( nwipe_options_long[i].name, "help" ) == 0 )
+                {
+                    /* check for the full option name, as getopt_long() allows abreviations and can lead to unintended
+                     * consequences when the user makes a typo */
+                    if( strcmp( argv[optind - 1], "--help" ) == 0 )
+                    {
+                        display_help();
+                        exit( EINVAL );
+                    }
+                    else
+                    {
+                        fprintf( stderr,
+                                 "Error: Strict command line options required, did you mean --help?, you typed "
+                                 "%s.\nType `sudo nwipe --help` for options \n",
+                                 argv[optind - 1] );
+                        exit( EINVAL );
+                    }
                 }
 
                 if( strcmp( nwipe_options_long[i].name, "noblank" ) == 0 )
                 {
-                    nwipe_options.noblank = 1;
-                    break;
+                    /* check for the full option name, as getopt_long() allows abreviations and can lead to unintended
+                     * consequences when the user makes a typo */
+                    if( strcmp( argv[optind - 1], "--noblank" ) == 0 )
+                    {
+                        nwipe_options.noblank = 1;
+                        break;
+                    }
+                    else
+                    {
+                        fprintf( stderr,
+                                 "Error: Strict command line options required, did you mean --noblank?, you typed "
+                                 "%s.\nType `sudo nwipe --help` for options \n",
+                                 argv[optind - 1] );
+                        exit( EINVAL );
+                    }
                 }
 
                 if( strcmp( nwipe_options_long[i].name, "nousb" ) == 0 )
                 {
-                    nwipe_options.nousb = 1;
-                    break;
+                    /* check for the full option name, as getopt_long() allows abreviations and can lead to unintended
+                     * consequences when the user makes a typo */
+                    if( strcmp( argv[optind - 1], "--nousb" ) == 0 )
+                    {
+                        nwipe_options.nousb = 1;
+                        break;
+                    }
+                    else
+                    {
+                        fprintf( stderr,
+                                 "Error: Strict command line options required, did you mean --nousb?, you typed "
+                                 "%s.\nType `sudo nwipe --help` for options \n",
+                                 argv[optind - 1] );
+                        exit( EINVAL );
+                    }
                 }
 
                 if( strcmp( nwipe_options_long[i].name, "nowait" ) == 0 )
                 {
-                    nwipe_options.nowait = 1;
-                    break;
+                    /* check for the full option name, as getopt_long() allows abreviations and can lead to unintended
+                     * consequences when the user makes a typo */
+                    if( strcmp( argv[optind - 1], "--nowait" ) == 0 )
+                    {
+                        nwipe_options.nowait = 1;
+                        break;
+                    }
+                    else
+                    {
+                        fprintf( stderr,
+                                 "Error: Strict command line options required, did you mean --nowait?, you typed "
+                                 "%s.\nType `sudo nwipe --help` for options \n",
+                                 argv[optind - 1] );
+                        exit( EINVAL );
+                    }
                 }
 
                 if( strcmp( nwipe_options_long[i].name, "nosignals" ) == 0 )
                 {
-                    nwipe_options.nosignals = 1;
-                    break;
+                    /* check for the full option name, as getopt_long() allows abreviations and can lead to unintended
+                     * consequences when the user makes a typo */
+                    if( strcmp( argv[optind - 1], "--nosignals" ) == 0 )
+                    {
+                        nwipe_options.nosignals = 1;
+                        break;
+                    }
+                    else
+                    {
+                        fprintf( stderr,
+                                 "Error: Strict command line options required, did you mean --nosignals?, you typed "
+                                 "%s.\nType `sudo nwipe --help` for options \n",
+                                 argv[optind - 1] );
+                        exit( EINVAL );
+                    }
                 }
 
                 if( strcmp( nwipe_options_long[i].name, "nogui" ) == 0 )
                 {
-                    nwipe_options.nogui = 1;
-                    nwipe_options.nowait = 1;
-                    break;
+                    /* check for the full option name, as getopt_long() allows abreviations and can lead to unintended
+                     * consequences when the user makes a typo */
+                    if( strcmp( argv[optind - 1], "--nogui" ) == 0 )
+                    {
+                        nwipe_options.nogui = 1;
+                        nwipe_options.nowait = 1;
+                        break;
+                    }
+                    else
+                    {
+                        fprintf( stderr,
+                                 "Error: Strict command line options required, did you mean --nogui?, you typed "
+                                 "%s.\nType `sudo nwipe --help` for options \n",
+                                 argv[optind - 1] );
+                        exit( EINVAL );
+                    }
+                }
+
+                if( strcmp( nwipe_options_long[i].name, "quiet" ) == 0 )
+                {
+                    /* check for the full option name, as getopt_long() allows abreviations and can lead to unintended
+                     * consequences when the user makes a typo */
+                    if( strcmp( argv[optind - 1], "--quiet" ) == 0 )
+                    {
+                        nwipe_options.quiet = 1;
+                        break;
+                    }
+                    else
+                    {
+                        fprintf( stderr,
+                                 "Error: Strict command line options required, did you mean --quiet?, you typed "
+                                 "%s.\nType `sudo nwipe --help` for options \n",
+                                 argv[optind - 1] );
+                        exit( EINVAL );
+                    }
                 }
 
                 if( strcmp( nwipe_options_long[i].name, "verbose" ) == 0 )
                 {
-                    nwipe_options.verbose = 1;
-                    break;
+                    /* check for the full option name, as getopt_long() allows abreviations and can lead to unintended
+                     * consequences when the user makes a typo */
+                    if( strcmp( argv[optind - 1], "--verbose" ) == 0 )
+                    {
+                        nwipe_options.verbose = 1;
+                        break;
+                    }
+                    else
+                    {
+                        fprintf( stderr,
+                                 "Error: Strict command line options required, did you mean --verbose?, you typed "
+                                 "%s.\nType `sudo nwipe --help` for options \n",
+                                 argv[optind - 1] );
+                        exit( EINVAL );
+                    }
                 }
 
                 if( strcmp( nwipe_options_long[i].name, "sync" ) == 0 )
@@ -297,7 +540,6 @@ int nwipe_options_parse( int argc, char** argv )
 
                 if( strcmp( nwipe_options_long[i].name, "verify" ) == 0 )
                 {
-
                     if( strcmp( optarg, "0" ) == 0 || strcmp( optarg, "off" ) == 0 )
                     {
                         nwipe_options.verify = NWIPE_VERIFY_NONE;
@@ -319,6 +561,67 @@ int nwipe_options_parse( int argc, char** argv )
                     /* Else we do not know this verification level. */
                     fprintf( stderr, "Error: Unknown verification level '%s'.\n", optarg );
                     exit( EINVAL );
+                }
+
+                /* I/O mode selection options. */
+
+                if( strcmp( nwipe_options_long[i].name, "directio" ) == 0 )
+                {
+                    /* check for the full option name, as getopt_long() allows abreviations and can lead to unintended
+                     * consequences when the user makes a typo */
+                    if( strcmp( argv[optind - 1], "--directio" ) == 0 )
+                    {
+                        nwipe_options.io_mode = NWIPE_IO_MODE_DIRECT;
+                        break;
+                    }
+                    else
+                    {
+                        fprintf( stderr,
+                                 "Error: Strict command line options required, did you mean --directio?, you typed "
+                                 "%s.\nType `sudo nwipe --help` for options \n",
+                                 argv[optind - 1] );
+                        exit( EINVAL );
+                    }
+                }
+
+                if( strcmp( nwipe_options_long[i].name, "cachedio" ) == 0 )
+                {
+                    /* check for the full option name, as getopt_long() allows abreviations and can lead to unintended
+                     * consequences when the user makes a typo */
+                    if( strcmp( argv[optind - 1], "--cachedio" ) == 0 )
+                    {
+                        nwipe_options.io_mode = NWIPE_IO_MODE_CACHED;
+                        break;
+                    }
+                    else
+                    {
+                        fprintf( stderr,
+                                 "Error: Strict command line options required, did you mean --cachedio?, you typed "
+                                 "%s.\nType `sudo nwipe --help` for options \n",
+                                 argv[optind - 1] );
+                        exit( EINVAL );
+                    }
+                }
+
+                if( strcmp( nwipe_options_long[i].name, "pdftag" ) == 0 )
+                {
+                    nwipe_options.PDFtag = 1;
+                    break;
+                }
+
+                if( strcmp( nwipe_options_long[i].name, "prng-benchmark" ) == 0 )
+                {
+                    nwipe_options.prng_benchmark_only = 1;
+                    break;
+                }
+                if( strcmp( nwipe_options_long[i].name, "prng-bench-seconds" ) == 0 )
+                {
+                    nwipe_options.prng_bench_seconds = atof( optarg );
+                    if( nwipe_options.prng_bench_seconds < 0.05 )
+                        nwipe_options.prng_bench_seconds = 0.05;
+                    if( nwipe_options.prng_bench_seconds > 10.0 )
+                        nwipe_options.prng_bench_seconds = 10.0;
+                    break;
                 }
 
                 /* getopt_long should raise on invalid option, so we should never get here. */
@@ -389,6 +692,11 @@ int nwipe_options_parse( int argc, char** argv )
                 if( strcmp( optarg, "bruce7" ) == 0 )
                 {
                     nwipe_options.method = &nwipe_bruce7;
+                    break;
+                }
+                if( strcmp( optarg, "bmb" ) == 0 )
+                {
+                    nwipe_options.method = &nwipe_bmb;
                     break;
                 }
                 if( strcmp( optarg, "unraid" ) == 0 )
@@ -482,9 +790,29 @@ int nwipe_options_parse( int argc, char** argv )
             case 'h': /* Display help. */
 
                 display_help();
+                exit( EINVAL );
                 break;
 
             case 'p': /* PRNG option. */
+
+                /* Default behaviour is auto now, but allow explicit opt-out */
+                if( strcmp( optarg, "auto" ) == 0 )
+                {
+                    nwipe_options.prng_auto = 1;
+                    /* keep current default as fallback until autoselect runs */
+                    break;
+                }
+
+                /* NEW: disable auto and keep compiled-in default selection */
+                if( strcmp( optarg, "default" ) == 0 || strcmp( optarg, "manual" ) == 0 )
+                {
+                    nwipe_options.prng_auto = 0;
+                    /* keep nwipe_options.prng as chosen by CPU heuristics above */
+                    break;
+                }
+
+                /* Any explicit PRNG selection implies auto off */
+                nwipe_options.prng_auto = 0;
 
                 if( strcmp( optarg, "mersenne" ) == 0 || strcmp( optarg, "twister" ) == 0 )
                 {
@@ -503,18 +831,35 @@ int nwipe_options_parse( int argc, char** argv )
                     nwipe_options.prng = &nwipe_isaac64;
                     break;
                 }
+
                 if( strcmp( optarg, "add_lagg_fibonacci_prng" ) == 0 )
                 {
                     nwipe_options.prng = &nwipe_add_lagg_fibonacci_prng;
                     break;
                 }
+
                 if( strcmp( optarg, "xoroshiro256_prng" ) == 0 )
                 {
                     nwipe_options.prng = &nwipe_xoroshiro256_prng;
                     break;
                 }
 
-                /* Else we do not know this PRNG. */
+                if( strcmp( optarg, "aes_ctr_prng" ) == 0 )
+                {
+                    if( has_aes_ni() )
+                    {
+                        nwipe_options.prng = &nwipe_aes_ctr_prng;
+                    }
+                    else
+                    {
+                        fprintf( stderr,
+                                 "Error: aes_ctr_prng requires AES-NI on this build, "
+                                 "but your CPU does not support AES-NI.\n" );
+                        exit( EINVAL );
+                    }
+                    break;
+                }
+
                 fprintf( stderr, "Error: Unknown prng '%s'.\n", optarg );
                 exit( EINVAL );
 
@@ -546,7 +891,6 @@ int nwipe_options_parse( int argc, char** argv )
             default:
 
                 /* Bogus command line argument. */
-                display_help();
                 exit( EINVAL );
 
         } /* method */
@@ -571,6 +915,7 @@ void nwipe_options_log( void )
     extern nwipe_prng_t nwipe_isaac64;
     extern nwipe_prng_t nwipe_add_lagg_fibonacci_prng;
     extern nwipe_prng_t nwipe_xoroshiro256_prng;
+    extern nwipe_prng_t nwipe_aes_ctr_prng;
 
     /**
      *  Prints a manifest of options to the log.
@@ -578,7 +923,7 @@ void nwipe_options_log( void )
 
     nwipe_log( NWIPE_LOG_NOTICE, "Program options are set as follows..." );
 
-    if( nwipe_options.autonuke )
+    if( nwipe_options.autonuke == 1 )
     {
         nwipe_log( NWIPE_LOG_NOTICE, "  autonuke = %i (on)", nwipe_options.autonuke );
     }
@@ -629,6 +974,10 @@ void nwipe_options_log( void )
     else if( nwipe_options.prng == &nwipe_xoroshiro256_prng )
     {
         nwipe_log( NWIPE_LOG_NOTICE, "  prng     = XORoshiro-256" );
+    }
+    else if( nwipe_options.prng == &nwipe_aes_ctr_prng )
+    {
+        nwipe_log( NWIPE_LOG_NOTICE, "  prng     = AES-CTR New Instructions (EXPERIMENTAL!)" );
     }
     else if( nwipe_options.prng == &nwipe_isaac )
     {
@@ -702,6 +1051,9 @@ void display_help()
     puts( "                          last  - Verify after the last pass" );
     puts( "                          all   - Verify every pass" );
     puts( "                          " );
+    puts( "      --directio          Force direct I/O (O_DIRECT); fail if not supported" );
+    puts( "      --cachedio          Force kernel cached I/O; never attempt O_DIRECT" );
+    puts( "      --io-mode=MODE      I/O mode: auto (default), direct, cached\n" );
     puts( "                          Please mind that HMG IS5 enhanced always verifies the" );
     puts( "                          last (PRNG) pass regardless of this option.\n" );
     puts( "  -m, --method=METHOD     The wiping method. See man page for more details." );
@@ -717,32 +1069,54 @@ void display_help()
     puts( "                          verify_one             - Verifies disk is 0xFF filled" );
     puts( "                          is5enh                 -  HMG IS5 enhanced\n" );
     puts( "                          bruce7                 -  Schneier Bruce 7-pass mixed pattern\n" );
+    puts( "                          bmb                    -  BMB21-2019 mixed pattern\n" );
     puts( "                          unraid                 -  Unraid Preclear\n" );
     puts( "  -l, --logfile=FILE      Filename to log to. Default is STDOUT\n" );
     puts( "  -P, --PDFreportpath=PATH Path to write PDF reports to. Default is \".\"" );
     puts( "                           If set to \"noPDF\" no PDF reports are written.\n" );
-    puts( "  -p, --prng=METHOD       PRNG option "
-          "(mersenne|twister|isaac|isaac64|add_lagg_fibonacci_prng|xoroshiro256_prng)\n" );
-    puts( "  -q, --quiet             Anonymize logs and the GUI by removing unique data, i.e." );
-    puts( "                          serial numbers, LU WWN Device ID, and SMBIOS/DMI data" );
-    puts( "                          XXXXXX = S/N exists, ????? = S/N not obtainable\n" );
-    puts( "  -r, --rounds=NUM        Number of times to wipe the device using the selected" );
-    puts( "                          method (default: 1)\n" );
-    puts( "      --noblank           Do NOT blank disk after wipe" );
-    puts( "                          (default is to complete a final blank pass)\n" );
-    puts( "      --nowait            Do NOT wait for a key before exiting" );
-    puts( "                          (default is to wait)\n" );
-    puts( "      --nosignals         Do NOT allow signals to interrupt a wipe" );
-    puts( "                          (default is to allow)\n" );
-    puts( "      --nogui             Do NOT show the GUI interface. Automatically invokes" );
-    puts( "                          the nowait option. Must be used with the --autonuke" );
-    puts( "                          option. Send SIGUSR1 to log current stats\n" );
-    puts( "      --nousb             Do NOT show or wipe any USB devices whether in GUI" );
-    puts( "                          mode, --nogui or --autonuke modes.\n" );
-    puts( "  -e, --exclude=DEVICES   Up to ten comma separated devices to be excluded" );
-    puts( "                          --exclude=/dev/sdc" );
-    puts( "                          --exclude=/dev/sdc,/dev/sdd" );
-    puts( "                          --exclude=/dev/sdc,/dev/sdd,/dev/mapper/cryptswap1\n" );
+    puts( "  -p, --prng=METHOD        PRNG option "
+          "(mersenne|twister|isaac|isaac64|add_lagg_fibonacci_prng|xoroshiro256_prng|aes_ctr_prng)\n" );
+    puts( "  --prng=auto              (default)" );
+    puts( "      Automatically benchmark all available PRNGs at startup and" );
+    puts( "      select the fastest one for the current hardware." );
     puts( "" );
-    exit( EXIT_SUCCESS );
+
+    puts( "  --prng=default" );
+    puts( "      Disable auto-selection and use the built-in default PRNG choice" );
+    puts( "      (CPU-based heuristic; no benchmarking)." );
+    puts( "      Alias: --prng=manual" );
+    puts( "" );
+    puts( "  --prng-benchmark" );
+    puts( "      Run a RAM-only PRNG throughput benchmark and exit." );
+    puts( "      Prints a sorted leaderboard (MB/s). No wipe is performed." );
+    puts( "" );
+    puts( "  --prng-bench-seconds=N" );
+    puts( "      Seconds per PRNG during benchmarking (default: 1.0)." );
+    puts( "      For --prng=auto this is automatically reduced unless set." );
+
+    puts( "  -q, --quiet              Anonymize logs and the GUI by removing unique data, i.e." );
+    puts( "                           serial numbers, LU WWN Device ID, and SMBIOS/DMI data." );
+    puts( "                           XXXXXX = S/N exists, ????? = S/N not obtainable\n" );
+    puts( "  -r, --rounds=NUM         Number of times to wipe the device using the selected" );
+    puts( "                           method. (default: 1)\n" );
+    puts( "      --noblank            Do NOT blank disk after wipe." );
+    puts( "                           (default is to complete a final blank pass)\n" );
+    puts( "      --nowait             Do NOT wait for a key before exiting." );
+    puts( "                           (default is to wait)\n" );
+    puts( "      --nosignals          Do NOT allow signals to interrupt a wipe." );
+    puts( "                           (default is to allow)\n" );
+    puts( "      --nogui              Do NOT show the GUI interface. Automatically invokes" );
+    puts( "                           the nowait option. Must be used with the --autonuke" );
+    puts( "                           option. Send SIGUSR1 to log current stats.\n" );
+    puts( "      --nousb              Do NOT show or wipe any USB devices whether in GUI" );
+    puts( "                           mode, --nogui or --autonuke modes.\n" );
+    puts( "      --pdftag             Enables a field on the PDF that holds a tag that\n" );
+    puts( "                           identifies the host computer\n" );
+    puts( "  -e, --exclude=DEVICES    Up to ten comma separated devices to be excluded." );
+    puts( "                           --exclude=/dev/sdc" );
+    puts( "                           --exclude=/dev/sdc,/dev/sdd" );
+    puts( "                           --exclude=/dev/sdc,/dev/sdd,/dev/mapper/cryptswap1\n" );
+    puts( "                           --exclude=/dev/disk/by-id/ata-XXXXXXXX" );
+    puts( "                           --exclude=/dev/disk/by-path/pci-0000:00:17.0-ata-1\n" );
+    puts( "" );
 }
