@@ -74,7 +74,7 @@
  *   O_DIRECT alignment rules.
  * - Never exceeds the device size.
  */
-static size_t nwipe_effective_io_blocksize( const nwipe_context_t* c )
+size_t nwipe_effective_io_blocksize( const nwipe_context_t* c )
 {
     size_t bs = (size_t) c->device_stat.st_blksize;
 
