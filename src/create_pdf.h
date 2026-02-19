@@ -22,6 +22,11 @@
 #define CREATE_PDF_H_
 
 #define MAX_PDF_FOOTER_TEXT_LENGTH 100
+#define MAX_PDF_TAG_LENGTH 40
+
+#define MODEL_HEADER_LENGTH 55
+#define SERIAL_HEADER_LENGTH 35
+#define BARCODE_LENGTH 100
 
 #define STATUS_ICON_GREEN_TICK 1
 #define STATUS_ICON_YELLOW_EXCLAMATION 2
@@ -45,8 +50,12 @@
  */
 int create_pdf( nwipe_context_t* ptr );
 
+int create_single_disc_pdf( nwipe_context_t* ptr );
+
 int nwipe_get_smart_data( nwipe_context_t* );
 
 void create_header_and_footer( nwipe_context_t*, char* );
+
+void pdf_header_footer_text( nwipe_context_t*, char* );
 
 #endif /* CREATE_PDF_H_ */

@@ -59,6 +59,13 @@ typedef enum nwipe_select_t_ {
     NWIPE_SELECT_DISABLED  // Do not wipe this device and do not allow it to be selected.
 } nwipe_select_t;
 
+/* I/O mode for data path: auto, direct, or cached. */
+typedef enum {
+    NWIPE_IO_MODE_AUTO = 0, /* Try O_DIRECT, fall back to cached I/O if not supported. */
+    NWIPE_IO_MODE_DIRECT, /* Force O_DIRECT, fail if not supported. */
+    NWIPE_IO_MODE_CACHED /* Force cached I/O, never attempt O_DIRECT. */
+} nwipe_io_mode_t;
+
 #define NWIPE_KNOB_SPEEDRING_SIZE 30
 #define NWIPE_KNOB_SPEEDRING_GRANULARITY 10
 
@@ -82,6 +89,14 @@ typedef struct nwipe_speedring_t_
 // 20 chracters for serial number plus null Byte
 #define NWIPE_SERIALNUMBER_LENGTH 20
 
+// UUID size
+#define UUID_SIZE 40
+
+// Device name max size including /dev/ path
+#define DEVICE_NAME_MAX_SIZE 100
+
+#define NWIPE_DEVICE_SYSFS_PATH_LENGTH 512
+
 typedef struct nwipe_context_t_
 {
     /*
@@ -99,8 +114,10 @@ typedef struct nwipe_context_t_
     int device_minor;  // The minor device number.
     int device_part;  // The device partition or slice number.
     char* device_name;  // The device file name.
-    char device_name_without_path[100];
-    char gui_device_name[100];
+    char device_name_without_path[DEVICE_NAME_MAX_SIZE];
+    char gui_device_name[DEVICE_NAME_MAX_SIZE];
+    char device_sysfs_path[NWIPE_DEVICE_SYSFS_PATH_LENGTH];  // sysfs path for topology view
+    char device_name_terse[DEVICE_NAME_MAX_SIZE];
     unsigned long long device_size;  // The device size in bytes.
     u64 device_size_in_sectors;  // The device size in number of logical sectors, this may be 512 or 4096 sectors
     u64 device_size_in_512byte_sectors;  // The device size in number of 512byte sectors, irrespective of logical sector
@@ -117,10 +134,10 @@ typedef struct nwipe_context_t_
     int device_is_ssd;  // 0 = no SSD, 1 = is a SSD
     char device_serial_no[NWIPE_SERIALNUMBER_LENGTH
                           + 1];  // Serial number(processed, 20 characters plus null termination) of the device.
+    char device_UUID[UUID_SIZE];  // Only populated with the UUID if device is a partition
     int device_target;  // The device target.
 
     u64 eta;  // The estimated number of seconds until method completion.
-    int entropy_fd;  // The entropy source. Usually /dev/urandom.
     int pass_count;  // The number of passes performed by the working wipe method.
     u64 pass_done;  // The number of bytes that have already been i/o'd in this pass.
     u64 pass_errors;  // The number of errors across all passes.
@@ -189,6 +206,7 @@ typedef struct nwipe_context_t_
     char HPA_size_text[NWIPE_DEVICE_SIZE_TXT_LENGTH];  // Human readable size bytes, KB, MB, GB ..
     int HPA_display_toggle_state;  // 0 or 1 Used to toggle between "[1TB] [ 33C]" and [HDA STATUS]
     time_t HPA_toggle_time;  // records a time, then if for instance 3 seconds has elapsed the display changes
+    nwipe_io_mode_t io_mode;  // specific I/O method for a given drive, direct or cached.
     int test_use1;
     int test_use2;
 

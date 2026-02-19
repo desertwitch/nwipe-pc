@@ -23,6 +23,8 @@
 #ifndef PASS_H_
 #define PASS_H_
 
+size_t nwipe_effective_io_blocksize( const nwipe_context_t* c );
+
 int nwipe_random_pass( nwipe_context_t* c );
 int nwipe_random_verify( nwipe_context_t* c );
 int nwipe_static_pass( nwipe_context_t* c, nwipe_pattern_t* pattern );

@@ -45,6 +45,38 @@ typedef struct
     nwipe_prng_read_t read;  // Read data from the prng.
 } nwipe_prng_t;
 
+typedef struct
+{
+    const nwipe_prng_t* prng;
+    double mbps;
+    double seconds;
+    unsigned long long bytes;
+    int rc;
+} nwipe_prng_bench_result_t;
+
+/* Existing API (kept for compatibility: no live output) */
+int nwipe_prng_benchmark_all( double seconds_per_prng,
+                              size_t io_block_bytes,
+                              nwipe_prng_bench_result_t* results,
+                              size_t results_count );
+
+/* New API: live output (spinner + per-PRNG immediate prints)
+ * live_print:
+ *   0 = behave like old benchmark (silent, just fills results[])
+ *   1 = print "Analysing PRNG performance:" immediately, rotate cursor,
+ *       print "Testing <PRNG>..." before each PRNG, and print result right after.
+ */
+int nwipe_prng_benchmark_all_live( double seconds_per_prng,
+                                   size_t io_block_bytes,
+                                   nwipe_prng_bench_result_t* results,
+                                   size_t results_count,
+                                   int live_print );
+
+const nwipe_prng_t* nwipe_prng_select_fastest( double seconds_per_prng,
+                                               size_t io_block_bytes,
+                                               nwipe_prng_bench_result_t* results,
+                                               size_t results_count );
+
 /* Mersenne Twister prototypes. */
 int nwipe_twister_init( NWIPE_PRNG_INIT_SIGNATURE );
 int nwipe_twister_read( NWIPE_PRNG_READ_SIGNATURE );
@@ -63,6 +95,10 @@ int nwipe_add_lagg_fibonacci_prng_read( NWIPE_PRNG_READ_SIGNATURE );
 int nwipe_xoroshiro256_prng_init( NWIPE_PRNG_INIT_SIGNATURE );
 int nwipe_xoroshiro256_prng_read( NWIPE_PRNG_READ_SIGNATURE );
 
+/* AES-CTR-NI prototypes. */
+int nwipe_aes_ctr_prng_init( NWIPE_PRNG_INIT_SIGNATURE );
+int nwipe_aes_ctr_prng_read( NWIPE_PRNG_READ_SIGNATURE );
+
 /* Size of the twister is not derived from the architecture, but it is strictly 4 bytes */
 #define SIZE_OF_TWISTER 4
 
@@ -75,5 +111,11 @@ int nwipe_xoroshiro256_prng_read( NWIPE_PRNG_READ_SIGNATURE );
 
 /* Size of the XOROSHIRO-256 is not derived from the architecture, but it is strictly 32 bytes */
 #define SIZE_OF_XOROSHIRO256_PRNG 32
+
+/* AES-CTR generation chunk size: fixed 128 KiB (not architecture-dependent) */
+#define SIZE_OF_AES_CTR_PRNG ( 128 * 1024 )
+
+/* Thread-local prefetch ring buffer capacity: 1 MiB */
+#define STASH_CAPACITY ( 1024 * 1024 )
 
 #endif /* PRNG_H_ */

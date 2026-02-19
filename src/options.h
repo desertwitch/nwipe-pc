@@ -23,8 +23,9 @@
 #ifndef OPTIONS_H_
 #define OPTIONS_H_
 
+#include "method.h"
+
 /* Program knobs. */
-#define NWIPE_KNOB_ENTROPY "/dev/urandom"
 #define NWIPE_KNOB_IDENTITY_SIZE 512
 #define NWIPE_KNOB_LABEL_SIZE 128
 #define NWIPE_KNOB_LOADAVG "/proc/loadavg"
@@ -39,6 +40,7 @@
 #define MAX_DRIVE_PATH_LENGTH 200  // e.g. /dev/sda is only 8 characters long, so 200 should be plenty.
 #define DEFAULT_SYNC_RATE 100000
 #define PATHNAME_MAX 2048
+#define NWIPE_USE_DIRECT_IO
 
 /* Function prototypes for loading options from the environment and command line. */
 int nwipe_options_parse( int argc, char** argv );
@@ -56,6 +58,9 @@ typedef struct
     int nowait;  // Do not wait for a final key before exiting.
     int nosignals;  // Do not allow signals to interrupt a wipe.
     int nogui;  // Do not show the GUI.
+    int prng_auto; /* 1 = auto-select fastest PRNG at startup */
+    int prng_benchmark_only; /* 1 = run PRNG benchmark and exit (nogui-friendly) */
+    double prng_bench_seconds; /* seconds per PRNG (default e.g. 0.25 for auto, 1.0 for manual) */
     char* banner;  // The product banner shown on the top line of the screen.
     void* method;  // A function pointer to the wipe method that will be used.
     char logfile[FILENAME_MAX];  // The filename to log the output to.
@@ -68,7 +73,11 @@ typedef struct
     int verbose;  // Make log more verbose
     int PDF_enable;  // 0=PDF creation disabled, 1=PDF creation enabled
     int PDF_preview_details;  // 0=Disable preview Org/Cust/date/time before drive selection, 1=Enable Preview
+    int PDF_toggle_host_info;  // 0=Disable visibility of host Info on PDF. UUID & S/N
+    int PDFtag;  // Enable display of hostID, such as UUID or serial no. on PDF report.
     nwipe_verify_t verify;  // A flag to indicate whether writes should be verified.
+    nwipe_io_mode_t io_mode;  // Global runtime I/O mode selection (auto/direct/cached), note in auto mode each
+                              // drive may use a different I/O mode if directIO isn't supported on a given drive.
 } nwipe_options_t;
 
 extern nwipe_options_t nwipe_options;
