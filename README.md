@@ -1,4 +1,5 @@
 # nwipe-pc
+<a href="https://github.com/desertwitch/nwipe-pc/tags"><img alt="Release" src="https://img.shields.io/github/v/tag/desertwitch/nwipe-pc?filter=*pc"></a>
 [![ci-clang-format](https://github.com/desertwitch/nwipe-pc/actions/workflows/ci-clang-format.yml/badge.svg)](https://github.com/desertwitch/nwipe-pc/actions/workflows/ci-clang-format.yml)
 [![ci-ubuntu-latest](https://github.com/desertwitch/nwipe-pc/actions/workflows/ci-ubuntu-latest.yml/badge.svg)](https://github.com/desertwitch/nwipe-pc/actions/workflows/ci-ubuntu-latest.yml)
 [![docker-package](https://github.com/desertwitch/nwipe-pc/actions/workflows/docker-package.yml/badge.svg)](https://github.com/desertwitch/nwipe-pc/actions/workflows/docker-package.yml)
