@@ -1082,7 +1082,7 @@ int nwipe_unraid_signature( nwipe_context_t* c )
         partition_size = disk_blocks_512 - start_sector;
     }
 
-    mbr = nwipe_alloc_io_buffer( c, io_blk, 1, "unraid_signature mbr" );
+    mbr = (unsigned char*) nwipe_alloc_io_buffer( c, io_blk, 1, "unraid_signature mbr" );
     if( !mbr )
     {
         nwipe_perror( errno, __FUNCTION__, "nwipe_alloc_io_buffer" );
@@ -1199,8 +1199,8 @@ int nwipe_unraid_signature_verify( nwipe_context_t* c )
         partition_size = disk_blocks_512 - start_sector;
     }
 
-    b = nwipe_alloc_io_buffer( c, io_blk, 0, "unraid_signature_verify read buffer" );
-    expected = nwipe_alloc_io_buffer( c, io_blk, 1, "unraid_signature_verify expected buffer" );
+    b = (unsigned char*) nwipe_alloc_io_buffer( c, io_blk, 0, "unraid_signature_verify read buffer" );
+    expected = (unsigned char*) nwipe_alloc_io_buffer( c, io_blk, 1, "unraid_signature_verify expected buffer" );
 
     if( !b || !expected )
     {
