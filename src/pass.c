@@ -27,6 +27,7 @@
 #include <string.h> /* memset, memcpy, memcmp */
 #include <errno.h>
 #include <limits.h>
+#include <unistd.h>
 
 #include "nwipe.h"
 #include "context.h"
@@ -64,6 +65,204 @@
 #ifndef NWIPE_IO_BLOCKSIZE
 #define NWIPE_IO_BLOCKSIZE ( 4 * 1024 * 1024UL ) /* 4 MiB I/O block */
 #endif
+
+/*
+ * write_with_retry / read_with_retry
+ *
+ * Attempt the I/O up to MAX_IO_ATTEMPTS times, sleeping IO_RETRY_DELAY_S
+ * seconds between attempts.  On persistent failure the last return value
+ * (negative errno or short count) is returned to the caller unchanged, so
+ * existing error-handling logic is unaffected.
+ */
+
+#ifndef NWIPE_MAX_IO_ATTEMPTS
+#define NWIPE_MAX_IO_ATTEMPTS 3
+#endif
+
+#ifndef NWIPE_IO_RETRY_DELAY_S
+#define NWIPE_IO_RETRY_DELAY_S 5
+#endif
+
+#if NWIPE_MAX_IO_ATTEMPTS < 1
+#error "NWIPE_MAX_IO_ATTEMPTS must be at least 1"
+#endif
+
+static ssize_t write_with_retry( nwipe_context_t* c, int fd, const void* buf, size_t count )
+{
+    ssize_t r;
+    off64_t pos;
+    int attempt;
+    int slept_s;
+    int pass_type_changed = 0;
+    nwipe_pass_t saved_pass_type;
+
+    for( attempt = 0; attempt < NWIPE_MAX_IO_ATTEMPTS; attempt++ )
+    {
+        r = write( fd, buf, count );
+
+        if( r == (ssize_t) count )
+        {
+            if( pass_type_changed )
+                c->pass_type = saved_pass_type; /* restore pass type */
+            return r; /* full write - success */
+        }
+
+        if( r < 0 )
+        {
+            nwipe_log( NWIPE_LOG_WARNING,
+                       "write_with_retry: write() failed on '%s' (attempt %d/%d): %s",
+                       c->device_name,
+                       attempt + 1,
+                       NWIPE_MAX_IO_ATTEMPTS,
+                       strerror( errno ) );
+        }
+        else
+        {
+            nwipe_log( NWIPE_LOG_WARNING,
+                       "write_with_retry: short write on '%s' (attempt %d/%d): "
+                       "wrote %zd of %zu bytes.",
+                       c->device_name,
+                       attempt + 1,
+                       NWIPE_MAX_IO_ATTEMPTS,
+                       r,
+                       count );
+        }
+
+        if( attempt + 1 < NWIPE_MAX_IO_ATTEMPTS )
+        {
+            if( attempt == 0 )
+            {
+                saved_pass_type = c->pass_type; /* save previous pass type */
+                c->pass_type = NWIPE_PASS_RETRY;
+                pass_type_changed = 1;
+            }
+
+            nwipe_log( NWIPE_LOG_NOTICE, "write_with_retry: retrying in %d seconds ...", NWIPE_IO_RETRY_DELAY_S );
+
+            for( slept_s = 0; slept_s < NWIPE_IO_RETRY_DELAY_S; slept_s++ )
+            {
+                sleep( 1 );
+                pthread_testcancel();
+            }
+
+            if( r > 0 )
+            {
+                pos = lseek( fd, -r, SEEK_CUR );
+                if( pos == (off64_t) -1 )
+                {
+                    nwipe_perror( errno, __FUNCTION__, "lseek" );
+                    nwipe_log(
+                        NWIPE_LOG_ERROR, "write_with_retry: cannot rewind after short write on '%s'.", c->device_name );
+                    if( pass_type_changed )
+                        c->pass_type = saved_pass_type; /* restore pass type */
+                    return -1; /* fatal, we don't know where we are */
+                }
+            }
+        }
+    }
+
+    nwipe_log( NWIPE_LOG_ERROR,
+               "write_with_retry: giving up on '%s' after %d attempts.",
+               c->device_name,
+               NWIPE_MAX_IO_ATTEMPTS );
+
+    if( pass_type_changed )
+        c->pass_type = saved_pass_type; /* restore pass type */
+
+    return r;
+} /* write_with_retry */
+
+static ssize_t read_with_retry( nwipe_context_t* c, int fd, void* buf, size_t count )
+{
+    ssize_t r;
+    off64_t pos;
+    int attempt;
+    int slept_s;
+    int pass_type_changed = 0;
+    nwipe_pass_t saved_pass_type;
+
+    for( attempt = 0; attempt < NWIPE_MAX_IO_ATTEMPTS; attempt++ )
+    {
+        r = read( fd, buf, count );
+
+        if( r == (ssize_t) count )
+        {
+            if( pass_type_changed )
+                c->pass_type = saved_pass_type; /* restore pass type */
+            return r; /* full read - success */
+        }
+
+        if( r == 0 )
+        {
+            if( pass_type_changed )
+                c->pass_type = saved_pass_type; /* restore pass type */
+            return r; /* EOF */
+        }
+
+        if( r < 0 )
+        {
+            nwipe_log( NWIPE_LOG_WARNING,
+                       "read_with_retry: read() failed on '%s' (attempt %d/%d): %s",
+                       c->device_name,
+                       attempt + 1,
+                       NWIPE_MAX_IO_ATTEMPTS,
+                       strerror( errno ) );
+        }
+        else
+        {
+            nwipe_log( NWIPE_LOG_WARNING,
+                       "read_with_retry: short read on '%s' (attempt %d/%d): "
+                       "read %zd of %zu bytes.",
+                       c->device_name,
+                       attempt + 1,
+                       NWIPE_MAX_IO_ATTEMPTS,
+                       r,
+                       count );
+        }
+
+        if( attempt + 1 < NWIPE_MAX_IO_ATTEMPTS )
+        {
+            if( attempt == 0 )
+            {
+                saved_pass_type = c->pass_type; /* save previous pass type */
+                c->pass_type = NWIPE_PASS_RETRY;
+                pass_type_changed = 1;
+            }
+
+            nwipe_log( NWIPE_LOG_NOTICE, "read_with_retry: retrying in %d seconds ...", NWIPE_IO_RETRY_DELAY_S );
+
+            for( slept_s = 0; slept_s < NWIPE_IO_RETRY_DELAY_S; slept_s++ )
+            {
+                sleep( 1 );
+                pthread_testcancel();
+            }
+
+            if( r > 0 )
+            {
+                pos = lseek( fd, -r, SEEK_CUR );
+                if( pos == (off64_t) -1 )
+                {
+                    nwipe_perror( errno, __FUNCTION__, "lseek" );
+                    nwipe_log(
+                        NWIPE_LOG_ERROR, "read_with_retry: cannot rewind after short read on '%s'.", c->device_name );
+                    if( pass_type_changed )
+                        c->pass_type = saved_pass_type; /* restore pass type */
+                    return -1; /* fatal, we don't know where we are */
+                }
+            }
+        }
+    }
+
+    nwipe_log( NWIPE_LOG_ERROR,
+               "read_with_retry: giving up on '%s' after %d attempts.",
+               c->device_name,
+               NWIPE_MAX_IO_ATTEMPTS );
+
+    if( pass_type_changed )
+        c->pass_type = saved_pass_type; /* restore pass type */
+
+    return r;
+} /* read_with_retry */
 
 /*
  * Compute the effective I/O block size for a given device:
@@ -303,7 +502,7 @@ int nwipe_random_verify( nwipe_context_t* c )
         c->prng->read( &c->prng_state, d, blocksize );
 
         /* Read data from device. */
-        r = (int) read( c->device_fd, b, blocksize );
+        r = (int) read_with_retry( c, c->device_fd, b, blocksize );
         if( r < 0 )
         {
             nwipe_perror( errno, __FUNCTION__, "read" );
@@ -517,10 +716,65 @@ int nwipe_random_pass( NWIPE_METHOD_SIGNATURE )
         }
 
         /* Write the generated random data to the device. */
-        r = (int) write( c->device_fd, b, blocksize );
+        r = (int) write_with_retry( c, c->device_fd, b, blocksize );
 
         if( r < 0 )
         {
+            if( nwipe_options.noabort_block_errors )
+            {
+                /*
+                 * Block write failed and the user requested to NOT abort the pass.
+                 * Treat the whole block as failed, skip it, count the bytes,
+                 * and continue with the next block.
+                 */
+                u64 s = (u64) blocksize;
+
+                /* Count all bytes of this block as pass errors. */
+                c->pass_errors += s;
+
+                /* Log the write error and that we are skipping this block. */
+                nwipe_perror( errno, __FUNCTION__, "write" );
+                nwipe_log( NWIPE_LOG_ERROR,
+                           "Write error on '%s' at offset %llu, skipping %llu bytes.",
+                           c->device_name,
+                           c->device_size - z,
+                           s );
+
+                /*
+                 * Skip forward by one block on the device, so subsequent writes
+                 * continue after the failing region.
+                 */
+                offset = lseek( c->device_fd, (off64_t) s, SEEK_CUR );
+                if( offset == (off64_t) -1 )
+                {
+                    /*
+                     * If we cannot move the file offset, we cannot safely continue,
+                     * so we must abort the pass even in no-abort mode.
+                     */
+                    nwipe_perror( errno, __FUNCTION__, "lseek" );
+                    nwipe_log(
+                        NWIPE_LOG_FATAL, "Unable to bump the '%s' file offset after a write error.", c->device_name );
+                    free( b );
+                    return -1;
+                }
+
+                /*
+                 * This block is logically processed (address space advanced),
+                 * but not actually written. Reflect that in the remaining size
+                 * and in the per-round progress, but DO NOT increase pass_done.
+                 */
+                z -= s;
+                c->round_done += s;
+
+                /* Allow thread cancellation points and proceed with the next loop iteration. */
+                pthread_testcancel();
+                continue;
+            }
+
+            /*
+             * Default behaviour (no no-abort option):
+             * abort the pass on a write error.
+             */
             nwipe_perror( errno, __FUNCTION__, "write" );
             nwipe_log( NWIPE_LOG_FATAL, "Unable to write to '%s'.", c->device_name );
             if( c->bytes_erased < ( c->device_size - z ) )
@@ -743,7 +997,7 @@ int nwipe_static_verify( NWIPE_METHOD_SIGNATURE, nwipe_pattern_t* pattern )
             }
         }
 
-        r = (int) read( c->device_fd, b, blocksize );
+        r = (int) read_with_retry( c, c->device_fd, b, blocksize );
         if( r < 0 )
         {
             nwipe_perror( errno, __FUNCTION__, "read" );
@@ -926,9 +1180,74 @@ int nwipe_static_pass( NWIPE_METHOD_SIGNATURE, nwipe_pattern_t* pattern )
          * pattern buffer. Because we filled the entire buffer with the
          * pattern (and made it large enough), &b[w] is always valid.
          */
-        r = (int) write( c->device_fd, &b[w], blocksize );
+        r = (int) write_with_retry( c, c->device_fd, &b[w], blocksize );
         if( r < 0 )
         {
+            if( nwipe_options.noabort_block_errors )
+            {
+                /*
+                 * Block write failed and the user requested to NOT abort the pass.
+                 * As in the random pass, treat the whole block as failed, skip it,
+                 * count the bytes, and continue with the next block.
+                 */
+                u64 s = (u64) blocksize;
+
+                /* Count all bytes of this block as pass errors. */
+                c->pass_errors += s;
+
+                /* Log the write error and that we are skipping this block. */
+                nwipe_perror( errno, __FUNCTION__, "write" );
+                nwipe_log( NWIPE_LOG_ERROR,
+                           "Write error on '%s' at offset %llu, skipping %llu bytes.",
+                           c->device_name,
+                           c->device_size - z,
+                           s );
+
+                /*
+                 * Skip forward by one block on the device, so subsequent writes
+                 * continue after the failing region.
+                 */
+                offset = lseek( c->device_fd, (off64_t) s, SEEK_CUR );
+                if( offset == (off64_t) -1 )
+                {
+                    /*
+                     * If we cannot move the file offset, we cannot safely continue,
+                     * so we must abort the pass even in no-abort mode.
+                     */
+                    nwipe_perror( errno, __FUNCTION__, "lseek" );
+                    nwipe_log(
+                        NWIPE_LOG_FATAL, "Unable to bump the '%s' file offset after a write error.", c->device_name );
+                    free( b );
+                    return -1;
+                }
+
+                /*
+                 * Adjust the pattern window so that the logical pattern position
+                 * stays consistent after skipping s bytes.
+                 */
+                if( pattern->length > 0 )
+                {
+                    size_t adv = (size_t) s % (size_t) pattern->length;
+                    w = (int) ( ( w + (int) adv ) % pattern->length );
+                }
+
+                /*
+                 * This block is logically processed (address space advanced),
+                 * but not actually written. Reflect that in the remaining size
+                 * and in the per-round progress, but DO NOT increase pass_done.
+                 */
+                z -= s;
+                c->round_done += s;
+
+                /* Allow thread cancellation points and proceed with the next loop iteration. */
+                pthread_testcancel();
+                continue;
+            }
+
+            /*
+             * Default behaviour (no no-abort option):
+             * abort the pass on a write error.
+             */
             nwipe_perror( errno, __FUNCTION__, "write" );
             nwipe_log( NWIPE_LOG_FATAL, "Unable to write to '%s'.", c->device_name );
             if( c->bytes_erased < ( c->device_size - z ) )
