@@ -3,19 +3,12 @@ FROM alpine:3.22
 ARG BRANCH=master
 ARG COMMIT=unknown
 
-RUN apk add --no-cache git && \
-    git clone --branch ${BRANCH} https://github.com/desertwitch/nwipe-pc.git /tmp/nwipe
-
 WORKDIR /tmp/nwipe
-
-RUN if [ "$BRANCH" = "devel" ]; then \
-      SHORT=$(echo "$COMMIT" | cut -c1-7) && \
-      sed -i "s/const char\* banner = \"nwipe-pc /const char* banner = \"(${SHORT}-DEVEL) nwipe-pc /" src/version.c; \
-    fi
 
 RUN apk update && \
     apk upgrade && \
     apk add --no-cache \
+        git \
         automake \
         make \
         curl \
@@ -30,12 +23,17 @@ RUN apk update && \
         gcc \
         g++ \
         linux-headers && \
+    git clone --branch ${BRANCH} https://github.com/desertwitch/nwipe-pc.git . && \
+    if [ "$BRANCH" = "devel" ]; then \
+      SHORT=$(echo "$COMMIT" | cut -c1-7) && \
+      sed -i "s/const char\* banner = \"nwipe-pc /const char* banner = \"(${SHORT}-DEVEL) nwipe-pc /" src/version.c; \
+    fi && \
     ash autogen.sh && \
     ash configure && \
     make && \
     make install && \
     cd /tmp && \
-    apk del automake make autoconf gcc g++ git && \
+    apk del git automake make autoconf gcc g++ && \
     rm -rf nwipe
 
 WORKDIR /app
