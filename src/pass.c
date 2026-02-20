@@ -837,15 +837,24 @@ int nwipe_random_pass( NWIPE_METHOD_SIGNATURE )
                 if( r != 0 )
                 {
                     nwipe_perror( errno, __FUNCTION__, "fdatasync" );
-                    nwipe_log( NWIPE_LOG_WARNING, "Buffer flush failure on '%s'.", c->device_name );
-                    nwipe_log( NWIPE_LOG_WARNING, "Wrote %llu bytes on '%s'.", c->pass_done, c->device_name );
                     c->fsyncdata_errors++;
-                    free( b );
-                    if( c->bytes_erased < ( c->device_size - z ) )
+
+                    if( nwipe_options.noabort_block_errors )
                     {
-                        c->bytes_erased = c->device_size - z;
+                        /* We must accept sync failures here, as bad blocks are considered non-fatal */
+                        nwipe_log( NWIPE_LOG_WARNING, "Buffer flush failure on '%s'.", c->device_name );
                     }
-                    return -1;
+                    else
+                    {
+                        nwipe_log( NWIPE_LOG_WARNING, "Buffer flush failure on '%s'.", c->device_name );
+                        nwipe_log( NWIPE_LOG_WARNING, "Wrote %llu bytes on '%s'.", c->pass_done, c->device_name );
+                        free( b );
+                        if( c->bytes_erased < ( c->device_size - z ) )
+                        {
+                            c->bytes_erased = c->device_size - z;
+                        }
+                        return -1;
+                    }
                 }
 
                 i = 0;
@@ -872,18 +881,23 @@ int nwipe_random_pass( NWIPE_METHOD_SIGNATURE )
     if( r != 0 )
     {
         nwipe_perror( errno, __FUNCTION__, "fdatasync" );
-        nwipe_log( NWIPE_LOG_WARNING, "Buffer flush failure on '%s'.", c->device_name );
         c->fsyncdata_errors++;
 
-        /*
-         * Keep the original semantics: adjust bytes_erased based on the last
-         * known good block and fail the pass.
-         */
-        if( c->bytes_erased < ( c->device_size - z - blocksize ) )
+        if( nwipe_options.noabort_block_errors )
         {
-            c->bytes_erased = c->device_size - z - blocksize;
+            /* We must accept sync failures here, as bad blocks are considered non-fatal */
+            nwipe_log( NWIPE_LOG_WARNING, "Buffer flush failure on '%s'.", c->device_name );
         }
-        return -1;
+        else
+        {
+            nwipe_log( NWIPE_LOG_WARNING, "Buffer flush failure on '%s'.", c->device_name );
+            nwipe_log( NWIPE_LOG_WARNING, "Wrote %llu bytes on '%s'.", c->pass_done, c->device_name );
+            if( c->bytes_erased < ( c->device_size - z - blocksize ) )
+            {
+                c->bytes_erased = c->device_size - z - blocksize;
+            }
+            return -1;
+        }
     }
 
     return 0;
@@ -1315,15 +1329,24 @@ int nwipe_static_pass( NWIPE_METHOD_SIGNATURE, nwipe_pattern_t* pattern )
                 if( r != 0 )
                 {
                     nwipe_perror( errno, __FUNCTION__, "fdatasync" );
-                    nwipe_log( NWIPE_LOG_WARNING, "Buffer flush failure on '%s'.", c->device_name );
-                    nwipe_log( NWIPE_LOG_WARNING, "Wrote %llu bytes on '%s'.", c->pass_done, c->device_name );
                     c->fsyncdata_errors++;
-                    free( b );
-                    if( c->bytes_erased < ( c->device_size - z ) )
+
+                    if( nwipe_options.noabort_block_errors )
                     {
-                        c->bytes_erased = c->device_size - z;
+                        /* We must accept sync failures here, as bad blocks are considered non-fatal */
+                        nwipe_log( NWIPE_LOG_WARNING, "Buffer flush failure on '%s'.", c->device_name );
                     }
-                    return -1;
+                    else
+                    {
+                        nwipe_log( NWIPE_LOG_WARNING, "Buffer flush failure on '%s'.", c->device_name );
+                        nwipe_log( NWIPE_LOG_WARNING, "Wrote %llu bytes on '%s'.", c->pass_done, c->device_name );
+                        free( b );
+                        if( c->bytes_erased < ( c->device_size - z ) )
+                        {
+                            c->bytes_erased = c->device_size - z;
+                        }
+                        return -1;
+                    }
                 }
 
                 i = 0;
@@ -1339,6 +1362,8 @@ int nwipe_static_pass( NWIPE_METHOD_SIGNATURE, nwipe_pattern_t* pattern )
 
     } /* /remaining bytes */
 
+    free( b );
+
     /* Final sync at end of pass. */
     c->sync_status = 1;
     r = fdatasync( c->device_fd );
@@ -1347,17 +1372,24 @@ int nwipe_static_pass( NWIPE_METHOD_SIGNATURE, nwipe_pattern_t* pattern )
     if( r != 0 )
     {
         nwipe_perror( errno, __FUNCTION__, "fdatasync" );
-        nwipe_log( NWIPE_LOG_WARNING, "Buffer flush failure on '%s'.", c->device_name );
         c->fsyncdata_errors++;
-        if( c->bytes_erased < ( c->device_size - z - blocksize ) )
-        {
-            c->bytes_erased = c->device_size - z - blocksize;
-        }
-        free( b );
-        return -1;
-    }
 
-    free( b );
+        if( nwipe_options.noabort_block_errors )
+        {
+            /* We must accept sync failures here, as bad blocks are considered non-fatal */
+            nwipe_log( NWIPE_LOG_WARNING, "Buffer flush failure on '%s'.", c->device_name );
+        }
+        else
+        {
+            nwipe_log( NWIPE_LOG_WARNING, "Buffer flush failure on '%s'.", c->device_name );
+            nwipe_log( NWIPE_LOG_WARNING, "Wrote %llu bytes on '%s'.", c->pass_done, c->device_name );
+            if( c->bytes_erased < ( c->device_size - z - blocksize ) )
+            {
+                c->bytes_erased = c->device_size - z - blocksize;
+            }
+            return -1;
+        }
+    }
 
     return 0;
 
