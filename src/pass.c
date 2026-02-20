@@ -100,6 +100,9 @@ static ssize_t write_with_retry( nwipe_context_t* c, int fd, const void* buf, si
     {
         r = write( fd, buf, count );
 
+        if( nwipe_options.noretry_io_errors )
+            return r; /* retrying is disabled */
+
         if( r == (ssize_t) count )
         {
             if( pass_type_changed )
@@ -184,6 +187,9 @@ static ssize_t read_with_retry( nwipe_context_t* c, int fd, void* buf, size_t co
     for( attempt = 0; attempt < NWIPE_MAX_IO_ATTEMPTS; attempt++ )
     {
         r = read( fd, buf, count );
+
+        if( nwipe_options.noretry_io_errors )
+            return r; /* retrying is disabled */
 
         if( r == (ssize_t) count )
         {
