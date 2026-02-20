@@ -1364,9 +1364,7 @@ int nwipe_runmethod( nwipe_context_t* c, nwipe_pattern_t* patterns )
         nwipe_log( NWIPE_LOG_ERROR, "%llu wipe errors on '%s'.", c->pass_errors, c->device_name );
     }
 
-    /* FIXME: The 'round_errors' context member is not being used. */
-
-    if( c->pass_errors > 0 || c->round_errors > 0 || c->verify_errors > 0 )
+    if( c->pass_errors > 0 || c->verify_errors > 0 || c->fsyncdata_errors > 0 )
     {
         /* We finished, but with non-fatal errors. */
         return 1;
