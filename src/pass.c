@@ -727,7 +727,7 @@ int nwipe_random_pass( NWIPE_METHOD_SIGNATURE )
                  * Treat the whole block as failed, skip it, count the bytes,
                  * and continue with the next block.
                  */
-                int s = (int) blocksize;
+                u64 s = (u64) blocksize;
 
                 /* Count all bytes of this block as pass errors. */
                 c->pass_errors += s;
@@ -735,16 +735,16 @@ int nwipe_random_pass( NWIPE_METHOD_SIGNATURE )
                 /* Log the write error and that we are skipping this block. */
                 nwipe_perror( errno, __FUNCTION__, "write" );
                 nwipe_log( NWIPE_LOG_ERROR,
-                           "Write error on '%s' at offset %llu, skipping %d bytes.",
+                           "Write error on '%s' at offset %llu, skipping %llu bytes.",
                            c->device_name,
-                           (unsigned long long) ( c->device_size - z ),
+                           c->device_size - z,
                            s );
 
                 /*
                  * Skip forward by one block on the device, so subsequent writes
                  * continue after the failing region.
                  */
-                offset = lseek( c->device_fd, s, SEEK_CUR );
+                offset = lseek( c->device_fd, (off64_t) s, SEEK_CUR );
                 if( offset == (off64_t) -1 )
                 {
                     /*
@@ -763,7 +763,7 @@ int nwipe_random_pass( NWIPE_METHOD_SIGNATURE )
                  * but not actually written. Reflect that in the remaining size
                  * and in the per-round progress, but DO NOT increase pass_done.
                  */
-                z -= (u64) s;
+                z -= s;
                 c->round_done += s;
 
                 /* Allow thread cancellation points and proceed with the next loop iteration. */
@@ -1190,7 +1190,7 @@ int nwipe_static_pass( NWIPE_METHOD_SIGNATURE, nwipe_pattern_t* pattern )
                  * As in the random pass, treat the whole block as failed, skip it,
                  * count the bytes, and continue with the next block.
                  */
-                int s = (int) blocksize;
+                u64 s = (u64) blocksize;
 
                 /* Count all bytes of this block as pass errors. */
                 c->pass_errors += s;
@@ -1198,16 +1198,16 @@ int nwipe_static_pass( NWIPE_METHOD_SIGNATURE, nwipe_pattern_t* pattern )
                 /* Log the write error and that we are skipping this block. */
                 nwipe_perror( errno, __FUNCTION__, "write" );
                 nwipe_log( NWIPE_LOG_ERROR,
-                           "Write error on '%s' at offset %llu, skipping %d bytes.",
+                           "Write error on '%s' at offset %llu, skipping %llu bytes.",
                            c->device_name,
-                           (unsigned long long) ( c->device_size - z ),
+                           c->device_size - z,
                            s );
 
                 /*
                  * Skip forward by one block on the device, so subsequent writes
                  * continue after the failing region.
                  */
-                offset = lseek( c->device_fd, s, SEEK_CUR );
+                offset = lseek( c->device_fd, (off64_t) s, SEEK_CUR );
                 if( offset == (off64_t) -1 )
                 {
                     /*
@@ -1236,7 +1236,7 @@ int nwipe_static_pass( NWIPE_METHOD_SIGNATURE, nwipe_pattern_t* pattern )
                  * but not actually written. Reflect that in the remaining size
                  * and in the per-round progress, but DO NOT increase pass_done.
                  */
-                z -= (u64) s;
+                z -= s;
                 c->round_done += s;
 
                 /* Allow thread cancellation points and proceed with the next loop iteration. */
