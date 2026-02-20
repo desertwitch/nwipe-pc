@@ -87,14 +87,15 @@
 #error "NWIPE_MAX_IO_ATTEMPTS must be at least 1"
 #endif
 
+/* Behaves like write(), but retries up to MAX_IO_ATTEMPTS times on error or short write.
+ * Returns -1 with errno from lseek() if seeking back after a short write fails. */
 static ssize_t write_with_retry( nwipe_context_t* c, int fd, const void* buf, size_t count )
 {
     ssize_t r;
-    off64_t pos;
     int attempt;
     int slept_s;
     int pass_type_changed = 0;
-    nwipe_pass_t saved_pass_type;
+    nwipe_pass_t saved_pass_type = c->pass_type;
 
     for( attempt = 0; attempt < NWIPE_MAX_IO_ATTEMPTS; attempt++ )
     {
@@ -135,7 +136,6 @@ static ssize_t write_with_retry( nwipe_context_t* c, int fd, const void* buf, si
         {
             if( attempt == 0 )
             {
-                saved_pass_type = c->pass_type; /* save previous pass type */
                 c->pass_type = NWIPE_PASS_RETRY;
                 pass_type_changed = 1;
             }
@@ -150,8 +150,7 @@ static ssize_t write_with_retry( nwipe_context_t* c, int fd, const void* buf, si
 
             if( r > 0 )
             {
-                pos = lseek( fd, -r, SEEK_CUR );
-                if( pos == (off64_t) -1 )
+                if( lseek( fd, -r, SEEK_CUR ) == (off64_t) -1 )
                 {
                     nwipe_perror( errno, __FUNCTION__, "lseek" );
                     nwipe_log(
@@ -175,14 +174,15 @@ static ssize_t write_with_retry( nwipe_context_t* c, int fd, const void* buf, si
     return r;
 } /* write_with_retry */
 
+/* Behaves like read(), but retries up to MAX_IO_ATTEMPTS times on error or short read.
+ * Returns -1 with errno from lseek() if seeking back after a short read fails. */
 static ssize_t read_with_retry( nwipe_context_t* c, int fd, void* buf, size_t count )
 {
     ssize_t r;
-    off64_t pos;
     int attempt;
     int slept_s;
     int pass_type_changed = 0;
-    nwipe_pass_t saved_pass_type;
+    nwipe_pass_t saved_pass_type = c->pass_type;
 
     for( attempt = 0; attempt < NWIPE_MAX_IO_ATTEMPTS; attempt++ )
     {
@@ -191,18 +191,11 @@ static ssize_t read_with_retry( nwipe_context_t* c, int fd, void* buf, size_t co
         if( nwipe_options.noretry_io_errors )
             return r; /* retrying is disabled */
 
-        if( r == (ssize_t) count )
+        if( r == (ssize_t) count || r == 0 )
         {
             if( pass_type_changed )
                 c->pass_type = saved_pass_type; /* restore pass type */
-            return r; /* full read - success */
-        }
-
-        if( r == 0 )
-        {
-            if( pass_type_changed )
-                c->pass_type = saved_pass_type; /* restore pass type */
-            return r; /* EOF */
+            return r; /* full read or EOF - success */
         }
 
         if( r < 0 )
@@ -230,7 +223,6 @@ static ssize_t read_with_retry( nwipe_context_t* c, int fd, void* buf, size_t co
         {
             if( attempt == 0 )
             {
-                saved_pass_type = c->pass_type; /* save previous pass type */
                 c->pass_type = NWIPE_PASS_RETRY;
                 pass_type_changed = 1;
             }
@@ -245,8 +237,7 @@ static ssize_t read_with_retry( nwipe_context_t* c, int fd, void* buf, size_t co
 
             if( r > 0 )
             {
-                pos = lseek( fd, -r, SEEK_CUR );
-                if( pos == (off64_t) -1 )
+                if( lseek( fd, -r, SEEK_CUR ) == (off64_t) -1 )
                 {
                     nwipe_perror( errno, __FUNCTION__, "lseek" );
                     nwipe_log(
