@@ -94,8 +94,6 @@ static ssize_t write_with_retry( nwipe_context_t* c, int fd, const void* buf, si
     ssize_t r;
     int attempt;
     int slept_s;
-    int pass_type_changed = 0;
-    nwipe_pass_t saved_pass_type = c->pass_type;
 
     for( attempt = 0; attempt < NWIPE_MAX_IO_ATTEMPTS; attempt++ )
     {
@@ -106,8 +104,7 @@ static ssize_t write_with_retry( nwipe_context_t* c, int fd, const void* buf, si
 
         if( r == (ssize_t) count )
         {
-            if( pass_type_changed )
-                c->pass_type = saved_pass_type; /* restore pass type */
+            c->retry_status = 0;
             return r; /* full write - success */
         }
 
@@ -134,11 +131,7 @@ static ssize_t write_with_retry( nwipe_context_t* c, int fd, const void* buf, si
 
         if( attempt + 1 < NWIPE_MAX_IO_ATTEMPTS )
         {
-            if( attempt == 0 )
-            {
-                c->pass_type = NWIPE_PASS_RETRY;
-                pass_type_changed = 1;
-            }
+            c->retry_status = 1;
 
             nwipe_log( NWIPE_LOG_NOTICE, "write_with_retry: retrying in %d seconds ...", NWIPE_IO_RETRY_DELAY_S );
 
@@ -155,8 +148,7 @@ static ssize_t write_with_retry( nwipe_context_t* c, int fd, const void* buf, si
                     nwipe_perror( errno, __FUNCTION__, "lseek" );
                     nwipe_log(
                         NWIPE_LOG_ERROR, "write_with_retry: cannot rewind after short write on '%s'.", c->device_name );
-                    if( pass_type_changed )
-                        c->pass_type = saved_pass_type; /* restore pass type */
+                    c->retry_status = 0;
                     return -1; /* fatal, we don't know where we are */
                 }
             }
@@ -168,9 +160,7 @@ static ssize_t write_with_retry( nwipe_context_t* c, int fd, const void* buf, si
                c->device_name,
                NWIPE_MAX_IO_ATTEMPTS );
 
-    if( pass_type_changed )
-        c->pass_type = saved_pass_type; /* restore pass type */
-
+    c->retry_status = 0;
     return r;
 } /* write_with_retry */
 
@@ -181,8 +171,6 @@ static ssize_t read_with_retry( nwipe_context_t* c, int fd, void* buf, size_t co
     ssize_t r;
     int attempt;
     int slept_s;
-    int pass_type_changed = 0;
-    nwipe_pass_t saved_pass_type = c->pass_type;
 
     for( attempt = 0; attempt < NWIPE_MAX_IO_ATTEMPTS; attempt++ )
     {
@@ -193,8 +181,7 @@ static ssize_t read_with_retry( nwipe_context_t* c, int fd, void* buf, size_t co
 
         if( r == (ssize_t) count || r == 0 )
         {
-            if( pass_type_changed )
-                c->pass_type = saved_pass_type; /* restore pass type */
+            c->retry_status = 0;
             return r; /* full read or EOF - success */
         }
 
@@ -221,11 +208,7 @@ static ssize_t read_with_retry( nwipe_context_t* c, int fd, void* buf, size_t co
 
         if( attempt + 1 < NWIPE_MAX_IO_ATTEMPTS )
         {
-            if( attempt == 0 )
-            {
-                c->pass_type = NWIPE_PASS_RETRY;
-                pass_type_changed = 1;
-            }
+            c->retry_status = 1;
 
             nwipe_log( NWIPE_LOG_NOTICE, "read_with_retry: retrying in %d seconds ...", NWIPE_IO_RETRY_DELAY_S );
 
@@ -242,8 +225,7 @@ static ssize_t read_with_retry( nwipe_context_t* c, int fd, void* buf, size_t co
                     nwipe_perror( errno, __FUNCTION__, "lseek" );
                     nwipe_log(
                         NWIPE_LOG_ERROR, "read_with_retry: cannot rewind after short read on '%s'.", c->device_name );
-                    if( pass_type_changed )
-                        c->pass_type = saved_pass_type; /* restore pass type */
+                    c->retry_status = 0;
                     return -1; /* fatal, we don't know where we are */
                 }
             }
@@ -255,9 +237,7 @@ static ssize_t read_with_retry( nwipe_context_t* c, int fd, void* buf, size_t co
                c->device_name,
                NWIPE_MAX_IO_ATTEMPTS );
 
-    if( pass_type_changed )
-        c->pass_type = saved_pass_type; /* restore pass type */
-
+    c->retry_status = 0;
     return r;
 } /* read_with_retry */
 
