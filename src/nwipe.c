@@ -1430,6 +1430,10 @@ void* signal_hand( void* ptr )
                         {
                             status = "[syncing]";
                         }
+                        if( c[i]->retry_status )
+                        {
+                            status = "[retrying]";
+                        }
 
                         convert_seconds_to_hours_minutes_seconds( c[i]->eta, &hours, &minutes, &seconds );
 

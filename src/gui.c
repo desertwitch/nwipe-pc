@@ -7685,17 +7685,23 @@ void* nwipe_gui_status( void* ptr )
                     } /* child running */
                     else
                     {
-                        if( c[i]->result == 0 )
+                        if( c[i]->result == 0 ) /* Success */
                         {
                             mvwprintw( main_window, yy++, 4, "[%05.2f%% complete, SUCCESS! ", c[i]->round_percent );
                         }
-                        else if( c[i]->signal )
+                        else if( c[i]->signal ) /* Signal received */
                         {
                             wattron( main_window, COLOR_PAIR( 9 ) );
                             mvwprintw( main_window, yy++, 4, "(>>> FAILURE! <<<, signal %i) ", c[i]->signal );
                             wattroff( main_window, COLOR_PAIR( 9 ) );
                         }
-                        else
+                        else if( c[i]->result == 1 ) /* Non-fatal errors */
+                        {
+                            wattron( main_window, COLOR_PAIR( 9 ) );
+                            mvwprintw( main_window, yy++, 4, "(>>> FAILURE! <<<) " );
+                            wattroff( main_window, COLOR_PAIR( 9 ) );
+                        }
+                        else /* Fatal error */
                         {
                             wattron( main_window, COLOR_PAIR( 9 ) );
                             mvwprintw( main_window, yy++, 4, "(>>> IOERROR! <<<, code %i) ", c[i]->result );
@@ -7719,28 +7725,28 @@ void* nwipe_gui_status( void* ptr )
                             /* Each text field in square brackets should be the same number of characters
                              * to retain output in columns */
                             case NWIPE_PASS_FINAL_BLANK:
-                                if( !c[i]->sync_status )
+                                if( !c[i]->sync_status && !c[i]->retry_status )
                                 {
                                     wprintw( main_window, "[ blanking] " );
                                 }
                                 break;
 
                             case NWIPE_PASS_FINAL_OPS2:
-                                if( !c[i]->sync_status )
+                                if( !c[i]->sync_status && !c[i]->retry_status )
                                 {
                                     wprintw( main_window, "[OPS2final] " );
                                 }
                                 break;
 
                             case NWIPE_PASS_WRITE:
-                                if( !c[i]->sync_status )
+                                if( !c[i]->sync_status && !c[i]->retry_status )
                                 {
                                     wprintw( main_window, "[ writing ] " );
                                 }
                                 break;
 
                             case NWIPE_PASS_VERIFY:
-                                if( !c[i]->sync_status )
+                                if( !c[i]->sync_status && !c[i]->retry_status )
                                 {
                                     wprintw( main_window, "[verifying] " );
                                 }
@@ -7754,13 +7760,43 @@ void* nwipe_gui_status( void* ptr )
                         {
                             wprintw( main_window, "[ syncing ] " );
                         }
+                        else if( c[i]->retry_status )
+                        {
+                            wprintw( main_window, "[retrying ] " );
+                        }
                     }
 
-                    /* Determine throughput nomenclature for this drive and output drives throughput to GUI */
-                    Determine_C_B_nomenclature(
-                        c[i]->throughput, nomenclature_result_str, NOMENCLATURE_RESULT_STR_SIZE );
+                    if( c[i]->wipe_status == 1 || nwipe_options.method == &nwipe_verify_zero
+                        || nwipe_options.method == &nwipe_verify_one || c[i]->result == 0 )
+                    {
+                        /* Determine throughput nomenclature for this drive and output drives throughput to GUI */
+                        Determine_C_B_nomenclature(
+                            c[i]->throughput, nomenclature_result_str, NOMENCLATURE_RESULT_STR_SIZE );
 
-                    wprintw( main_window, "[%s/s] ", nomenclature_result_str );
+                        wprintw( main_window, "[%s/s] ", nomenclature_result_str );
+                    }
+                    else
+                    {
+                        /* If the wipe failed, show percentage that was erased (calculated as in PDF). */
+                        char bytes_percent_str[7] = "";
+
+                        if( c[i]->device_type == NWIPE_DEVICE_NVME || c[i]->device_type == NWIPE_DEVICE_VIRT
+                            || c[i]->HPA_status == HPA_NOT_APPLICABLE )
+                        {
+                            convert_double_to_string(
+                                bytes_percent_str,
+                                (double) ( (double) c[i]->bytes_erased / (double) c[i]->device_size ) * 100 );
+                        }
+                        else
+                        {
+                            convert_double_to_string( bytes_percent_str,
+                                                      (double) ( (double) c[i]->bytes_erased
+                                                                 / (double) c[i]->Calculated_real_max_size_in_bytes )
+                                                          * 100 );
+                        }
+
+                        wprintw( main_window, "[erased:%s%%] ", bytes_percent_str );
+                    }
 
                     /* Insert whitespace. */
                     yy += 1;
