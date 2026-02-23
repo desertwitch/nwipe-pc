@@ -1488,7 +1488,7 @@ int nwipe_unraid_signature( nwipe_context_t* c )
         return -1;
     }
 
-    r = write( c->device_fd, mbr, io_blk );
+    r = nwipe_write_with_retry( c, c->device_fd, mbr, io_blk );
     if( r < 0 || (size_t) r != io_blk )
     {
         nwipe_perror( errno, __FUNCTION__, "write" );
@@ -1624,7 +1624,7 @@ int nwipe_unraid_signature_verify( nwipe_context_t* c )
         c->fsyncdata_errors++;
     }
 
-    r = read( c->device_fd, b, io_blk );
+    r = nwipe_read_with_retry( c, c->device_fd, b, io_blk );
     if( r < 0 || (size_t) r != io_blk )
     {
         nwipe_perror( errno, __FUNCTION__, "read" );

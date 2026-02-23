@@ -1212,9 +1212,18 @@ int nwipe_runmethod( nwipe_context_t* c, nwipe_pattern_t* patterns )
 
     if( nwipe_options.method == &nwipe_unraid )
     {
+        if( c->pass_errors > 0 || c->fsyncdata_errors > 0 )
+        {
+            nwipe_log( NWIPE_LOG_FATAL,
+                       "'%s' has pass or sync errors, cannot write Unraid preclear signature",
+                       c->device_name );
+
+            return -1;
+        }
+
         if( nwipe_options.verify == NWIPE_VERIFY_LAST || nwipe_options.verify == NWIPE_VERIFY_ALL )
         {
-            if( c->verify_errors != 0 )
+            if( c->verify_errors > 0 )
             {
                 nwipe_log( NWIPE_LOG_FATAL,
                            "'%s' has verification errors, cannot write Unraid preclear signature",
