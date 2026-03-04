@@ -426,6 +426,8 @@ nwipe_directory="nwipe_master"
 mkdir -p "$nwipe_directory"
 cd "$nwipe_directory"
 
+apt update
+
 sudo apt install -y \
   build-essential \
   pkg-config \
@@ -436,7 +438,7 @@ sudo apt install -y \
   libconfig-dev \
   libconfig++-dev \
   dmidecode \
-  readlink \
+  coreutils \
   smartmontools \
   hdparm \
   git
