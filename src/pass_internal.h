@@ -15,6 +15,7 @@
 #include "options.h"
 #include "logging.h"
 #include "gui.h"
+#include "pass.h"
 
 ssize_t nwipe_write_with_retry( nwipe_context_t* c, int fd, const void* buf, size_t count );
 ssize_t nwipe_pwrite_with_retry( nwipe_context_t* c, int fd, const void* buf, size_t count, off64_t offset );
@@ -22,7 +23,6 @@ ssize_t nwipe_read_with_retry( nwipe_context_t* c, int fd, void* buf, size_t cou
 
 int nwipe_fdatasync( nwipe_context_t* c, const char* f );
 
-size_t nwipe_effective_io_blocksize( const nwipe_context_t* c );
 void* nwipe_alloc_io_buffer( const nwipe_context_t* c, size_t size, int clear, const char* label );
 int nwipe_compute_sync_rate_for_device( const nwipe_context_t* c, size_t io_blocksize );
 void nwipe_update_bytes_erased( nwipe_context_t* c, u64 z, u64 bs, int synced );

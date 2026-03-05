@@ -20,7 +20,7 @@ NWIPE_CORE = \
     method.c method.h \
     pass.c pass.h \
     pass_internal.c pass_internal.h \
-    pass_static.c pass_random.c \
+    pass_static.c pass_random.c pass_unraid.c \
     device.c device.h \
     hpa_dco.c hpa_dco.h \
     miscellaneous.c miscellaneous.h \
