@@ -89,6 +89,8 @@ void display_help()
     BHCYN \
     "        bmb" reset "                    -  BMB21-2019 mixed pattern\n\n" \
     BHCYN \
+    "        unraid" reset "                 -  Unraid Preclear\n\n" \
+    BHCYN \
     "  -l, --logfile=FILE\n" reset \
     "        Filename to log to. Default is STDOUT\n\n" \
     BHCYN \

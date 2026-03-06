@@ -1501,6 +1501,12 @@ void calculate_round_size( nwipe_context_t* c )
                                                             method_class,
                                                             &effective_pass_size );
     c->pass_size = (u64) effective_pass_size;
+
+    if( nwipe_options.method == &nwipe_unraid )
+    {
+        /* Preclear signature write + verify (one block each) */
+        c->round_size += (u64) ( nwipe_effective_io_blocksize( c ) * 2 );
+    }
 }
 
 /* eof */
