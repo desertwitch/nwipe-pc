@@ -5,18 +5,18 @@ NWIPE_BIN="${1:-./src/nwipe}"
 ARTIFACT_DIR="${NWIPE_CI_ARTIFACT_DIR:-}"
 
 if [[ "$(id -u)" -ne 0 ]]; then
-	echo "Error: must run as root (loop devices + dmsetup)."
+	echo "[ERROR] Must run as root (loop devices + dmsetup)."
 	exit 1
 fi
 
 if [[ ! -x "${NWIPE_BIN}" ]]; then
-	echo "Error: nwipe binary not executable: ${NWIPE_BIN}"
+	echo "[ERROR] nwipe binary not executable: ${NWIPE_BIN}"
 	exit 2
 fi
 
 for cmd in losetup truncate dmsetup dd blockdev hexdump awk grep mktemp tee tail; do
 	if ! command -v "${cmd}" >/dev/null 2>&1; then
-		echo "Error: required command not found: ${cmd}"
+		echo "[ERROR] Required command not found: ${cmd}"
 		exit 1
 	fi
 done
@@ -25,10 +25,13 @@ WORKDIR="$(mktemp -d /tmp/unraid-preclear-ci.XXXXXX)"
 LOG_DIR="${WORKDIR}/logs"
 mkdir -p "${LOG_DIR}"
 
-SMALL_IMG="${WORKDIR}/small.img" # 10MB backing file
-LARGE_IMG="${WORKDIR}/large.img" # 10MB backing file for first 10MB of 3TB device
+SMALL_IMG="${WORKDIR}/small.img"
+LARGE_IMG="${WORKDIR}/large.img"
 SMALL_LOOP=""
 LARGE_LOOP=""
+
+SMALL_DM_NAME="unraid_ci_small_$$"
+SMALL_DM_DEV="/dev/mapper/${SMALL_DM_NAME}"
 
 LARGE_DM_NAME="unraid_ci_large_$$"
 LARGE_DM_DEV="/dev/mapper/${LARGE_DM_NAME}"
@@ -38,7 +41,11 @@ LARGE_DM_DEV="/dev/mapper/${LARGE_DM_NAME}"
 # ------------------------------------------------------------------------------
 
 cleanup() {
-	echo "==> Cleaning up..."
+	echo "==> [CLEANUP] Removing devices and temporary files..."
+	if dmsetup info "${SMALL_DM_NAME}" >/dev/null 2>&1; then
+		dmsetup remove "${SMALL_DM_NAME}" >/dev/null 2>&1 || true
+	fi
+
 	if dmsetup info "${LARGE_DM_NAME}" >/dev/null 2>&1; then
 		dmsetup remove "${LARGE_DM_NAME}" >/dev/null 2>&1 || true
 	fi
@@ -84,11 +91,11 @@ verify_mbr() {
 		over_mbr_size="y"
 		patterns+=("00000" "00000" "00002" "00000" "00000" "00255" "00255" "00255")
 		partition_size=$(printf "%d" 0xFFFFFFFF)
-		echo "    Checking large MBR layout (> 2TB)..." 
+		echo "    [INFO] MBR layout: large (>= 2TB)"
 	else
 		patterns+=("00000" "00000" "00000" "00000" "00000" "00000" "00000" "00000")
 		partition_size=$disk_blocks
-		echo "    Checking small MBR layout (< 2TB)..." 
+		echo "    [INFO] MBR layout: small (< 2TB)"
 	fi
 
 	#
@@ -118,7 +125,7 @@ verify_mbr() {
 
 	for i in $(seq 0 $((${#patterns[@]}-1)) ); do
 		if [ "${sectors[$i]}" != "${patterns[$i]}" ]; then
-			echo "Failed test 1: MBR signature is not valid, byte $i [${sectors[$i]}] != [${patterns[$i]}]"
+			echo "    [FAIL] MBR signature byte ${i}: got [${sectors[$i]}], expected [${patterns[$i]}]"
 			return 1
 		fi
 	done
@@ -144,17 +151,18 @@ verify_mbr() {
 			;;
 		1)
 			if [ "$over_mbr_size" != "y" ]; then
-				echo "Failed test 2: GPT start sector [$start_sector] is wrong, should be [1]."
+				echo "    [FAIL] GPT start sector [${start_sector}] invalid; expected [1] for large disk"
 				return 1
 			fi
 			;;
 		*)
-			echo "Failed test 3: start sector is different from those accepted by Unraid."
+			echo "    [FAIL] Start sector [${start_sector}] not accepted by Unraid (expected 1, 63, or 64)"
+			return 1
 			;;
 	esac
 
 	if [ $partition_size -ne $mbr_blocks ]; then
-		echo "Failed test 4: physical size didn't match MBR declared size. [$partition_size] != [$mbr_blocks]"
+		echo "    [FAIL] Partition size mismatch: physical [${partition_size}] != MBR declared [${mbr_blocks}]"
 		return 1
 	fi
 
@@ -170,7 +178,7 @@ run_nwipe() {
 	local stdout_file="${LOG_DIR}/${case_name}.stdout"
 	local stderr_file="${LOG_DIR}/${case_name}.stderr"
 
-	echo "==> nwipe: case=${case_name} device=${device}"
+	echo "==> [NWIPE] case=${case_name} device=${device} io=${io}"
 
 	set +e
 	"${NWIPE_BIN}" \
@@ -192,93 +200,126 @@ run_nwipe() {
 	set -e
 
 	if [[ "${rc}" -ne 0 ]]; then
-		echo "Error: nwipe returned ${rc} for case '${case_name}'"
-		echo "--- stdout ---"
+		echo "    [FAIL] nwipe exited with code ${rc}"
+		echo "    [INFO] Last 40 lines of stdout:"
 		tail -n 40 "${stdout_file}" || true
-		echo "--- stderr ---"
+		echo "    [INFO] Last 40 lines of stderr:"
 		tail -n 40 "${stderr_file}" || true
 		return 1
 	fi
 
 	if ! grep -Fq "Nwipe successfully completed." "${log_file}"; then
-		echo "Error: 'Nwipe successfully completed.' not found in ${log_file}"
+		echo "    [FAIL] 'Nwipe successfully completed.' not found in ${log_file}"
+		echo "    [INFO] Last 40 lines of log:"
 		tail -n 40 "${log_file}" || true
 		return 1
 	fi
 
-	echo "    nwipe completed successfully."
+	echo "    [PASS] nwipe completed successfully"
 }
 
 assert_mbr() {
 	local case_name="$1"
 	local device="$2"
 
-	echo "==> verify_mbr: case=${case_name} device=${device}"
+	echo "==> [ASSERT_MBR] case=${case_name} device=${device}"
 
 	declare -A disk_properties
 	disk_properties[blocks_512]=$(blockdev --getsz "${device}")
-	echo "    blocks_512: ${disk_properties[blocks_512]}"
+	echo "    [INFO] blocks_512=${disk_properties[blocks_512]}"
 
 	if verify_mbr "${device}"; then
-		echo "    PASS: Unraid preclear signature valid."
+		echo "    [PASS] Unraid preclear signature valid"
 	else
-		echo "    FAIL: Unraid preclear invalid for case '${case_name}'"
+		echo "    [FAIL] Unraid preclear signature invalid"
 		return 1
 	fi
 }
 
-assert_large_head_size() {
+assert_head_size() {
+	local case_name="$1"
+	local dm_dev="$2"
+	local total_sectors="$3"
+	local backing_img="$4"
+
 	local expected_bytes=$(( 10 * 1024 * 1024 ))
 	local actual_bytes
 	local dm_sectors
 
-	dm_sectors=$(blockdev --getsz "${LARGE_DM_DEV}")
-	echo "==> Writing to end of large device to verify dm-zero discards"
-	echo "    dm device blocks_512: ${dm_sectors}"
+	dm_sectors=$(blockdev --getsz "${dm_dev}")
+
+	echo "==> [ASSERT_HEAD_SIZE] case=${case_name} device=${dm_dev}"
+	echo "    [INFO] dm_sectors=${dm_sectors}"
 
 	dd if=/dev/urandom bs=512 count=1 \
-		seek=$(( LARGE_TOTAL_SECTORS - 1 )) \
-		of="${LARGE_DM_DEV}" 2>/dev/null
+		seek=$(( total_sectors - 1 )) \
+		of="${dm_dev}" 2>/dev/null
 
-	actual_bytes=$(stat -c%s "${LARGE_IMG}")
-	echo "    Expected backing file: ${expected_bytes} bytes"
-	echo "    Actual backing file:   ${actual_bytes} bytes"
+	actual_bytes=$(stat -c%s "${backing_img}")
+	echo "    [INFO] Expected backing file size: ${expected_bytes} bytes"
+	echo "    [INFO] Actual backing file size:   ${actual_bytes} bytes"
 
 	if [[ "${actual_bytes}" -gt "${expected_bytes}" ]]; then
-		echo "    FAIL: backing file grew beyond 10MB - dm-zero tail is not discarding writes"
+		echo "    [FAIL] Backing file grew beyond 10MB; dm-zero tail is not discarding writes"
 		return 1
 	fi
-	echo "    PASS: Backing file size unchanged after tail write."
+	echo "    [PASS] Backing file size unchanged after tail write"
+}
+
+assert_image_equal() {
+	local case_name="${1:-image_compare}"
+	local expected="$2"
+	local actual="$3"
+
+	local size
+	size=$(stat -c%s "${expected}")
+
+	echo "==> [ASSERT_IMAGE_EQUAL] case=${case_name} size=${size}"
+
+	if cmp -s -n "${size}" "${expected}" "${actual}"; then
+		echo "    [PASS] First ${size} bytes match reference image"
+	else
+		echo "    [FAIL] Mismatch in first ${size} bytes against reference image"
+		diff <(hexdump -C "${expected}") <(dd if="${actual}" bs=1 count="${size}" 2>/dev/null | hexdump -C) | head -60
+		return 1
+	fi
 }
 
 # ------------------------------------------------------------------------------
 # DEVICES
 # ------------------------------------------------------------------------------
 
-echo "==> Creating SMALL device (10MB loopback, < 2TB)"
+HEAD_SECTORS=$(( 10 * 1024 * 1024 / 512 ))
+
+echo "==> [SETUP] Creating SMALL fake device (500GB, first 10MB real + rest dm-zero)"
+SMALL_TOTAL_SECTORS=976773168
+SMALL_TAIL_SECTORS=$(( SMALL_TOTAL_SECTORS - HEAD_SECTORS ))
+
 truncate -s 10M "${SMALL_IMG}"
 SMALL_LOOP="$(losetup --find --show "${SMALL_IMG}")"
-echo "    Loop device: ${SMALL_LOOP}"
 
-echo "==> Creating LARGE fake device (3TB, first 10MB real + rest dm-zero)"
+dmsetup create "${SMALL_DM_NAME}" <<EOF
+0 ${HEAD_SECTORS} linear ${SMALL_LOOP} 0
+${HEAD_SECTORS} ${SMALL_TAIL_SECTORS} zero
+EOF
+
+echo "    [INFO] dm_device=${SMALL_DM_DEV}"
+echo "    [INFO] total_sectors=${SMALL_TOTAL_SECTORS}"
+
+echo "==> [SETUP] Creating LARGE fake device (3TB, first 10MB real + rest dm-zero)"
 LARGE_TOTAL_SECTORS=$(( 3 * 1024 * 1024 * 1024 * 1024 / 512 ))
-HEAD_SECTORS=$(( 10 * 1024 * 1024 / 512 ))
-TAIL_SECTORS=$(( LARGE_TOTAL_SECTORS - HEAD_SECTORS ))
+LARGE_TAIL_SECTORS=$(( LARGE_TOTAL_SECTORS - HEAD_SECTORS ))
 
 truncate -s 10M "${LARGE_IMG}"
 LARGE_LOOP="$(losetup --find --show "${LARGE_IMG}")"
 
-echo "    Head loop device: ${LARGE_LOOP}"
-echo "    Total sectors: ${LARGE_TOTAL_SECTORS}"
-echo "    Head sectors: ${HEAD_SECTORS}, Tail sectors (dm-zero): ${TAIL_SECTORS}"
-
-# First 10MB - linear to real loop, remainder - zero (discards writes)
 dmsetup create "${LARGE_DM_NAME}" <<EOF
 0 ${HEAD_SECTORS} linear ${LARGE_LOOP} 0
-${HEAD_SECTORS} ${TAIL_SECTORS} zero
+${HEAD_SECTORS} ${LARGE_TAIL_SECTORS} zero
 EOF
 
-echo "    DM device: ${LARGE_DM_DEV}"
+echo "    [INFO] dm_device=${LARGE_DM_DEV}"
+echo "    [INFO] total_sectors=${LARGE_TOTAL_SECTORS}"
 
 # ------------------------------------------------------------------------------
 # TESTS
@@ -288,23 +329,24 @@ echo ""
 echo "========================================"
 echo " TEST 1: SMALL device (< 2TB)"
 echo "========================================"
+assert_head_size   "small" "${SMALL_DM_DEV}" "${SMALL_TOTAL_SECTORS}" "${SMALL_IMG}"
 
-run_nwipe  "small_wipe_direct" "directio" "${SMALL_LOOP}"
-assert_mbr "small_wipe_direct" "${SMALL_LOOP}"
+run_nwipe          "small_wipe_direct" "directio" "${SMALL_DM_DEV}"
+assert_mbr         "small_wipe_direct" "${SMALL_DM_DEV}"
+assert_image_equal "small_wipe_direct" "tests/ci/unraid_ref_small.img" "${SMALL_IMG}"
 
-run_nwipe  "small_wipe_cached" "cachedio" "${SMALL_LOOP}"
-assert_mbr "small_wipe_cached" "${SMALL_LOOP}"
+# Do not test in cached I/O as it takes extremely long.
 
 echo ""
 echo "========================================"
 echo " TEST 2: LARGE device (> 2TB)"
 echo "========================================"
-assert_large_head_size
+assert_head_size   "large" "${LARGE_DM_DEV}" "${LARGE_TOTAL_SECTORS}" "${LARGE_IMG}"
 
-run_nwipe  "large_wipe_direct" "directio" "${LARGE_DM_DEV}"
-assert_mbr "large_wipe_direct" "${LARGE_DM_DEV}"
+run_nwipe          "large_wipe_direct" "directio" "${LARGE_DM_DEV}"
+assert_mbr         "large_wipe_direct" "${LARGE_DM_DEV}"
 
-# Do not test large in cached I/O as it takes extremely long.
+# Do not test in cached I/O as it takes extremely long.
 
 echo ""
 echo "========================================"
