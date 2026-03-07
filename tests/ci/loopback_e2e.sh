@@ -190,9 +190,9 @@ run_nwipe_case() {
         --nogui \
         --nowait \
         --nosignals \
-        --cachedio \
         --noblank \
         --rounds=1 \
+        --directio \
         --sync=0 \
         --verify="${verify}" \
         --method="${method}" \
