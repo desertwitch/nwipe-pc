@@ -163,7 +163,9 @@ verify_mbr() {
 
 run_nwipe() {
 	local case_name="$1"
-	local device="$2"
+	local io="$2"
+	local device="$3"
+
 	local log_file="${LOG_DIR}/${case_name}.log"
 	local stdout_file="${LOG_DIR}/${case_name}.stdout"
 	local stderr_file="${LOG_DIR}/${case_name}.stderr"
@@ -178,8 +180,7 @@ run_nwipe() {
 		--nosignals \
 		--noblank \
 		--rounds=1 \
-		--directio \
-		--sync=0 \
+		--${io} \
 		--verify=off \
 		--method=unraid \
 		--PDFreportpath=noPDF \
@@ -287,16 +288,24 @@ echo ""
 echo "========================================"
 echo " TEST 1: SMALL device (< 2TB)"
 echo "========================================"
-run_nwipe  "small_wipe" "${SMALL_LOOP}"
-assert_mbr "small_wipe" "${SMALL_LOOP}"
+
+run_nwipe  "small_wipe_direct" "directio" "${SMALL_LOOP}"
+assert_mbr "small_wipe_direct" "${SMALL_LOOP}"
+
+run_nwipe  "small_wipe_cached" "cachedio" "${SMALL_LOOP}"
+assert_mbr "small_wipe_cached" "${SMALL_LOOP}"
 
 echo ""
 echo "========================================"
 echo " TEST 2: LARGE device (> 2TB)"
 echo "========================================"
 assert_large_head_size
-run_nwipe  "large_wipe" "${LARGE_DM_DEV}"
-assert_mbr "large_wipe" "${LARGE_DM_DEV}"
+
+run_nwipe  "large_wipe_direct" "directio" "${LARGE_DM_DEV}"
+assert_mbr "large_wipe_direct" "${LARGE_DM_DEV}"
+
+run_nwipe  "large_wipe_cached" "cachedio" "${LARGE_DM_DEV}"
+assert_mbr "large_wipe_cached" "${LARGE_DM_DEV}"
 
 echo ""
 echo "========================================"
