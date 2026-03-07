@@ -345,6 +345,7 @@ assert_head_size   "large" "${LARGE_DM_DEV}" "${LARGE_TOTAL_SECTORS}" "${LARGE_I
 
 run_nwipe          "large_wipe_direct" "directio" "${LARGE_DM_DEV}"
 assert_mbr         "large_wipe_direct" "${LARGE_DM_DEV}"
+assert_image_equal "large_wipe_direct" "tests/ci/unraid_ref_large.img" "${LARGE_IMG}"
 
 # Do not test in cached I/O as it takes extremely long.
 
