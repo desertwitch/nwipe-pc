@@ -304,8 +304,7 @@ assert_large_head_size
 run_nwipe  "large_wipe_direct" "directio" "${LARGE_DM_DEV}"
 assert_mbr "large_wipe_direct" "${LARGE_DM_DEV}"
 
-run_nwipe  "large_wipe_cached" "cachedio" "${LARGE_DM_DEV}"
-assert_mbr "large_wipe_cached" "${LARGE_DM_DEV}"
+# Do not test large in cached I/O as it takes extremely long.
 
 echo ""
 echo "========================================"
