@@ -42,8 +42,8 @@ jobs:
           sudo -E env NWIPE_CI_ARTIFACT_DIR="$PWD/ci-artifacts/unraid" \
             tests/ci/unraid_preclear.sh ./src/nwipe
 
-      - name: Upload Unraid Preclear artifacts
-        if: failure()
+      - name: Upload Unraid Preclear integration artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: unraid-preclear-logs

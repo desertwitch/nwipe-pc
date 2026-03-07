@@ -31,6 +31,7 @@ SMALL_LOOP=""
 LARGE_LOOP=""
 
 LARGE_DM_NAME="unraid_ci_large_$$"
+LARGE_DM_DEV="/dev/mapper/${LARGE_DM_NAME}"
 
 # ------------------------------------------------------------------------------
 # HELPERS
@@ -276,7 +277,6 @@ dmsetup create "${LARGE_DM_NAME}" <<EOF
 ${HEAD_SECTORS} ${TAIL_SECTORS} zero
 EOF
 
-LARGE_DM_DEV="/dev/$(dmsetup info -c --noheadings -o blkdevname "${LARGE_DM_NAME}")"
 echo "    DM device: ${LARGE_DM_DEV}"
 
 # ------------------------------------------------------------------------------
