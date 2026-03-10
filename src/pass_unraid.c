@@ -14,9 +14,7 @@ int nwipe_unraid_signature( nwipe_context_t* c )
 
     c->pass_done = 0; /* Reset pass byte counter */
 
-    size_t io_blk = nwipe_effective_io_blocksize( c );
-
-    if( io_blk < 512 )
+    if( c->device_io_block_size < 512 )
     {
         nwipe_log(
             NWIPE_LOG_FATAL, "Device block size too small for Unraid preclear signature on '%s'", c->device_name );
@@ -45,7 +43,7 @@ int nwipe_unraid_signature( nwipe_context_t* c )
         partition_size = disk_blocks_512 - start_sector;
     }
 
-    mbr = (unsigned char*) nwipe_alloc_io_buffer( c, io_blk, 1, "unraid_signature mbr" );
+    mbr = (unsigned char*) nwipe_alloc_io_buffer( c, c->device_io_block_size, 1, "unraid_signature mbr" );
     if( !mbr )
     {
         nwipe_perror( errno, __FUNCTION__, "nwipe_alloc_io_buffer" );
@@ -87,8 +85,8 @@ int nwipe_unraid_signature( nwipe_context_t* c )
         return -1;
     }
 
-    r = nwipe_write_with_retry( c, c->device_fd, mbr, io_blk );
-    if( r < 0 || (size_t) r != io_blk )
+    r = nwipe_write_with_retry( c, c->device_fd, mbr, c->device_io_block_size );
+    if( r < 0 || (size_t) r != c->device_io_block_size )
     {
         nwipe_perror( errno, __FUNCTION__, "write" );
         nwipe_log( NWIPE_LOG_FATAL, "Failed writing Unraid preclear signature to '%s'", c->device_name );
@@ -131,9 +129,7 @@ int nwipe_unraid_signature_verify( nwipe_context_t* c )
 
     c->pass_done = 0; /* Reset pass byte counter */
 
-    size_t io_blk = nwipe_effective_io_blocksize( c );
-
-    if( io_blk < 512 )
+    if( c->device_io_block_size < 512 )
     {
         nwipe_log(
             NWIPE_LOG_FATAL, "Device block size too small for Unraid preclear signature on '%s'", c->device_name );
@@ -162,8 +158,9 @@ int nwipe_unraid_signature_verify( nwipe_context_t* c )
         partition_size = disk_blocks_512 - start_sector;
     }
 
-    b = (unsigned char*) nwipe_alloc_io_buffer( c, io_blk, 0, "unraid_signature_verify read buffer" );
-    expected = (unsigned char*) nwipe_alloc_io_buffer( c, io_blk, 1, "unraid_signature_verify expected buffer" );
+    b = (unsigned char*) nwipe_alloc_io_buffer( c, c->device_io_block_size, 0, "unraid_signature_verify read buffer" );
+    expected = (unsigned char*) nwipe_alloc_io_buffer(
+        c, c->device_io_block_size, 1, "unraid_signature_verify expected buffer" );
 
     if( !b || !expected )
     {
@@ -223,8 +220,8 @@ int nwipe_unraid_signature_verify( nwipe_context_t* c )
         c->fsyncdata_errors++;
     }
 
-    r = nwipe_read_with_retry( c, c->device_fd, b, io_blk );
-    if( r < 0 || (size_t) r != io_blk )
+    r = nwipe_read_with_retry( c, c->device_fd, b, c->device_io_block_size );
+    if( r < 0 || (size_t) r != c->device_io_block_size )
     {
         nwipe_perror( errno, __FUNCTION__, "read" );
         nwipe_log( NWIPE_LOG_FATAL, "Failed to read Unraid preclear signature from '%s'", c->device_name );
@@ -238,7 +235,7 @@ int nwipe_unraid_signature_verify( nwipe_context_t* c )
     c->round_done += (u64) r;
 
     /* We can just compare the entire block, as everything after the signature will be zero */
-    if( memcmp( b, expected, io_blk ) != 0 )
+    if( memcmp( b, expected, c->device_io_block_size ) != 0 )
     {
         nwipe_log( NWIPE_LOG_FATAL, "Unraid preclear signature is invalid on '%s'", c->device_name );
         c->verify_errors += 1;
