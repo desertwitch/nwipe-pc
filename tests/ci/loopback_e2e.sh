@@ -255,10 +255,10 @@ if [[ "${MODE}" == "full" ]]; then
     run_nwipe_case "wipe_prng" "cachedio" "prng" "all"
 
     # Run --reverse tests (different routines), direct + cached I/O:
-    run_nwipe_case "reverse_wipe_one" "directio" "one" "last" "isaac" 1
-    run_nwipe_case "reverse_wipe_prng" "directio" "prng" "last" "isaac" 1
-    run_nwipe_case "reverse_wipe_one" "cachedio" "one" "last" "isaac" 1
-    run_nwipe_case "reverse_wipe_prng" "cachedio" "prng" "last" "isaac" 1
+    run_nwipe_case "reverse_wipe_one" "directio" "one" "all" "isaac" 1
+    run_nwipe_case "reverse_wipe_prng" "directio" "prng" "all" "isaac" 1
+    run_nwipe_case "reverse_wipe_one" "cachedio" "one" "all" "isaac" 1
+    run_nwipe_case "reverse_wipe_prng" "cachedio" "prng" "all" "isaac" 1
 
     # PRNG statistical cases (STS)
     # Run these in direct I/O so we're not verifying a cache
