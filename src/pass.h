@@ -33,6 +33,4 @@ int nwipe_static_verify( nwipe_context_t* c, nwipe_pattern_t* pattern );
 int nwipe_unraid_signature( nwipe_context_t* c );
 int nwipe_unraid_signature_verify( nwipe_context_t* c );
 
-size_t nwipe_effective_io_blocksize( const nwipe_context_t* c );
-
 #endif /* PASS_H_ */

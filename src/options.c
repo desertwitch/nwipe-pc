@@ -75,6 +75,9 @@ int nwipe_options_parse( int argc, char** argv )
 
     /* The list of acceptable long options. */
     static struct option nwipe_options_long[] = {
+        /* Set when user wants to allow wiping of devices that are in use. */
+        { "force", no_argument, 0, 0 },
+
         /* Set when the user wants to wipe without a confirmation prompt. */
         { "autonuke", no_argument, 0, 0 },
 
@@ -119,6 +122,9 @@ int nwipe_options_parse( int argc, char** argv )
         /* Reverse the I/O direction (end -> start). */
         { "reverse", no_argument, 0, 0 },
 
+        /* Scatter the I/O direction (random order). */
+        { "scatter", no_argument, 0, 0 },
+
         /* Do NOT retry on possibly transient I/O errors. */
         { "no-retry-on-io-errors", no_argument, 0, 0 },
 
@@ -154,6 +160,7 @@ int nwipe_options_parse( int argc, char** argv )
         { 0, 0, 0, 0 } };
 
     /* Set default options. */
+    nwipe_options.force = 0;
     nwipe_options.autonuke = 0;
     nwipe_options.autopoweroff = 0;
     nwipe_options.method = &nwipe_random;
@@ -350,6 +357,11 @@ int nwipe_options_parse( int argc, char** argv )
         switch( nwipe_opt )
         {
             case 0: /* Long options without short counterparts. */
+                if( strcmp( nwipe_options_long[i].name, "force" ) == 0 )
+                {
+                    nwipe_options.force = 1;
+                    break;
+                }
 
                 if( strcmp( nwipe_options_long[i].name, "autonuke" ) == 0 )
                 {
@@ -487,6 +499,12 @@ int nwipe_options_parse( int argc, char** argv )
                 if( strcmp( nwipe_options_long[i].name, "reverse" ) == 0 )
                 {
                     nwipe_options.io_direction = NWIPE_IO_DIRECTION_REVERSE;
+                    break;
+                }
+
+                if( strcmp( nwipe_options_long[i].name, "scatter" ) == 0 )
+                {
+                    nwipe_options.io_direction = NWIPE_IO_DIRECTION_SCATTER;
                     break;
                 }
 
@@ -968,6 +986,8 @@ void nwipe_options_log( void )
      */
     nwipe_log( NWIPE_LOG_NOTICE, "Program options are set as follows..." );
 
+    nwipe_log( NWIPE_LOG_NOTICE, "  force        = %i (%s)", nwipe_options.force, nwipe_options.force ? "on" : "off" );
+
     nwipe_log(
         NWIPE_LOG_NOTICE, "  autonuke     = %i (%s)", nwipe_options.autonuke, nwipe_options.autonuke ? "on" : "off" );
 
@@ -1014,8 +1034,9 @@ void nwipe_options_log( void )
 
     nwipe_log( NWIPE_LOG_NOTICE,
                "  direction    = %s",
-               nwipe_options.io_direction == NWIPE_IO_DIRECTION_FORWARD ? "start -> end (forward)"
-                                                                        : "end -> start (reverse)" );
+               nwipe_options.io_direction == NWIPE_IO_DIRECTION_FORWARD       ? "start -> end (forward)"
+                   : nwipe_options.io_direction == NWIPE_IO_DIRECTION_REVERSE ? "end -> start (reverse)"
+                                                                              : "random order (scatter)" );
 
     nwipe_log( NWIPE_LOG_NOTICE, "  quiet        = %i", nwipe_options.quiet );
     nwipe_log( NWIPE_LOG_NOTICE, "  rounds       = %i", nwipe_options.rounds );
