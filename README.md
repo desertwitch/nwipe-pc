@@ -490,7 +490,7 @@ ShredOS:
 It is provided as:
 
 * `.img` (USB bootable image), and
-* `.iso` (for CD/DVD).
+* `.iso` (for CD/DVD/USB bootable image).
 
 See the ShredOS README for detailed instructions on downloading and writing the image.
 
