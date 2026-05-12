@@ -204,6 +204,22 @@ int stdscr_cols_previous;
 
 int tft_saver = 0;
 
+/*
+ * Sets the selection state of a device, unless it is disabled.
+ * For all disabled devices a call to this function is a no-op.
+ * This avoids having to guard every device select's call-site.
+ * Returns 1 if the value was set, 0 if the device is disabled.
+ */
+static int nwipe_gui_select_set( nwipe_context_t* c, nwipe_select_t value )
+{
+    if( c->select == NWIPE_SELECT_DISABLED || c->select == NWIPE_SELECT_DISABLED_BUSY )
+        return 0;
+
+    c->select = value;
+
+    return 1;
+}
+
 /* Draw one "└── " prefix using ncurses ACS characters (portable, no UTF-8 needed).
  * Falls dein Terminal ACS nicht sauber kann, kannst du unten auf ASCII fallbacken.
  */
@@ -1488,7 +1504,7 @@ void nwipe_gui_select( int count, nwipe_context_t** c )
                     if( c[focus]->select == NWIPE_SELECT_TRUE )
                     {
                         /* Reverse the selection of this element. */
-                        c[focus]->select = NWIPE_SELECT_FALSE;
+                        nwipe_gui_select_set( c[focus], NWIPE_SELECT_FALSE );
 
                         if( c[focus]->device_part == 0 )
                         {
@@ -1501,7 +1517,7 @@ void nwipe_gui_select( int count, nwipe_context_t** c )
                                     && c[i]->device_target == c[focus]->device_target
                                     && c[i]->device_lun == c[focus]->device_lun && c[i]->device_part > 0 )
                                 {
-                                    c[i]->select = NWIPE_SELECT_FALSE;
+                                    nwipe_gui_select_set( c[i], NWIPE_SELECT_FALSE );
                                 }
 
                             } /* for all contexts */
@@ -1540,7 +1556,7 @@ void nwipe_gui_select( int count, nwipe_context_t** c )
                                         && c[i]->device_lun == c[focus]->device_lun && c[i]->device_part == 0 )
                                     {
                                         /* Enable the disk element. */
-                                        c[i]->select = NWIPE_SELECT_FALSE;
+                                        nwipe_gui_select_set( c[i], NWIPE_SELECT_FALSE );
                                     }
 
                                 } /* for all contexts */
@@ -1556,7 +1572,7 @@ void nwipe_gui_select( int count, nwipe_context_t** c )
                     if( c[focus]->select == NWIPE_SELECT_FALSE )
                     {
                         /* Reverse the selection. */
-                        c[focus]->select = NWIPE_SELECT_TRUE;
+                        nwipe_gui_select_set( c[focus], NWIPE_SELECT_TRUE );
 
                         if( c[focus]->device_part == 0 )
                         {
@@ -1569,7 +1585,7 @@ void nwipe_gui_select( int count, nwipe_context_t** c )
                                     && c[i]->device_target == c[focus]->device_target
                                     && c[i]->device_lun == c[focus]->device_lun && c[i]->device_part > 0 )
                                 {
-                                    c[i]->select = NWIPE_SELECT_TRUE_PARENT;
+                                    nwipe_gui_select_set( c[i], NWIPE_SELECT_TRUE_PARENT );
                                 }
 
                             } /* for */
@@ -1589,7 +1605,7 @@ void nwipe_gui_select( int count, nwipe_context_t** c )
                                     && c[i]->device_target == c[focus]->device_target
                                     && c[i]->device_lun == c[focus]->device_lun && c[i]->device_part == 0 )
                                 {
-                                    c[i]->select = NWIPE_SELECT_FALSE_CHILD;
+                                    nwipe_gui_select_set( c[i], NWIPE_SELECT_FALSE_CHILD );
                                 }
                             }
 
@@ -1806,7 +1822,7 @@ void nwipe_gui_select( int count, nwipe_context_t** c )
                     {
                         for( i = 0; i < count; i++ )
                         {
-                            c[i]->select = NWIPE_SELECT_TRUE;
+                            nwipe_gui_select_set( c[i], NWIPE_SELECT_TRUE );
                         }
                         select_all_toggle_status = 1;
                     }
@@ -1816,7 +1832,7 @@ void nwipe_gui_select( int count, nwipe_context_t** c )
                         {
                             for( i = 0; i < count; i++ )
                             {
-                                c[i]->select = NWIPE_SELECT_FALSE;
+                                nwipe_gui_select_set( c[i], NWIPE_SELECT_FALSE );
                             }
                             select_all_toggle_status = 0;
                         }
