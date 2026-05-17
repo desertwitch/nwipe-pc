@@ -37,7 +37,6 @@
 #include "options.h"
 #include "logging.h"
 #include "gui.h"
-#include "pass.h"
 
 typedef struct
 {
