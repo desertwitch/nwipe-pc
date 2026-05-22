@@ -257,6 +257,16 @@ if [[ "${MODE}" == "full" ]]; then
     run_nwipe_case "direct_wipe_prng" "directio" "prng" "all"
     run_nwipe_case "cached_wipe_prng" "cachedio" "prng" "all"
 
+    # Gutmann wipe + verification, direct + cached I/O (forward/reverse/scatter)
+    # We've seen several errors with this method and it exercises static + PRNG
+    # It's also the only method with an uneven static pattern (alignment-relevant)
+    run_nwipe_case "direct_wipe_gutmann" "directio" "gutmann" "all"
+    run_nwipe_case "cached_wipe_gutmann" "cachedio" "gutmann" "all"
+    run_nwipe_case "direct_reverse_wipe_gutmann" "directio" "gutmann" "all" "isaac" 1
+    run_nwipe_case "cached_reverse_wipe_gutmann" "cachedio" "gutmann" "all" "isaac" 1
+    run_nwipe_case "direct_scatter_wipe_gutmann" "directio" "gutmann" "all" "isaac" 2
+    run_nwipe_case "cached_scatter_wipe_gutmann" "cachedio" "gutmann" "all" "isaac" 2
+
     # Run --reverse tests (different routines), direct + cached I/O:
     run_nwipe_case "direct_reverse_wipe_one" "directio" "one" "all" "isaac" 1
     run_nwipe_case "direct_reverse_wipe_prng" "directio" "prng" "all" "isaac" 1
