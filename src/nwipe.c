@@ -793,6 +793,10 @@ int main( int argc, char** argv )
 
         /* Initialise the variable that tracks how much of the drive has been erased */
         c1[i]->bytes_erased = 0;
+
+        /* Zero buckets that will contain the max and min disk speeds */
+        memset( c1[i]->min_throughput, 0, sizeof( c1[i]->min_throughput ) );
+        memset( c1[i]->max_throughput, 0, sizeof( c1[i]->max_throughput ) );
     }
 
     /* Pass the number selected to the struct for other threads */
@@ -835,9 +839,15 @@ int main( int argc, char** argv )
             /* Initialise the spinner character index */
             c2[i]->spinner_idx = 0;
 
-            /* Initialise the start and end time of the wipe */
+            /* Initialise the start and end time of the wipe (second resolution) */
             c2[i]->start_time = 0;
             c2[i]->end_time = 0;
+
+            /* Initialise the start and end time of the wipe (high resolution millisecond/nanosecond resolution) */
+            c2[i]->start_clock.tv_sec = 0;
+            c2[i]->start_clock.tv_nsec = 0;
+            c2[i]->end_clock.tv_sec = 0;
+            c2[i]->end_clock.tv_nsec = 0;
 
             /* Initialise the wipe_status flag, -1 = wipe not yet started */
             c2[i]->wipe_status = -1;

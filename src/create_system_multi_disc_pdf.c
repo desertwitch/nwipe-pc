@@ -126,6 +126,10 @@ int create_system_multi_disc_pdf( nwipe_thread_data_ptr_t* ptrx )
     /* ------------------ */
     /* Initialise Various */
 
+    /* Is there an external /etc/nwipe/logo.jpg [png/ppm/pgm/bmp] file? */
+    d->logo_buffer = 0;
+    d->logo_buffer = check_and_load_logo( &( d->logo_len ) );
+
     /* Used to display correct icon on page 2 */
     status_icon = 0;  // zero don't display icon, see header STATUS_ICON_..
 
@@ -301,7 +305,7 @@ int create_system_multi_disc_pdf( nwipe_thread_data_ptr_t* ptrx )
          */
         yoffset = yoffset - line_spacing;  // next line
         pdf_add_text( pdf, NULL, "Size(Apparent): ", TEXT_SIZE_DATA, LEFT_MARGIN_TEXT, yoffset, PDF_GRAY );
-        snprintf( device_size, sizeof( device_size ), "%s,%llib", c[i]->device_size_text, c[i]->device_size );
+        snprintf( device_size, sizeof( device_size ), "%s,%lliB", c[i]->device_size_text, c[i]->device_size );
         text_color_size_apparent =
             determine_color_for_size_apparent( c[i] );  // RED hidden sectors detected, GREEN actual size
         pdf_add_text( pdf, NULL, device_size, TEXT_SIZE_DATA, 150, yoffset, text_color_size_apparent );
@@ -355,20 +359,21 @@ int create_system_multi_disc_pdf( nwipe_thread_data_ptr_t* ptrx )
         /********
          * Errors
          */
-        pdf_add_text( pdf, NULL, "Errors(pass/sync/verify):", TEXT_SIZE_DATA, 300, yoffset, PDF_GRAY );
+        pdf_add_text( pdf, NULL, "Errors(pass/sync/verify/retries):", TEXT_SIZE_DATA, 300, yoffset, PDF_GRAY );
         snprintf( errors,
                   sizeof( errors ),
-                  "%llu/%llu/%llu",
+                  "%llu/%llu/%llu/%llu",
                   c[i]->pass_errors,
                   c[i]->fsyncdata_errors,
-                  c[i]->verify_errors );
-        if( c[i]->pass_errors != 0 || c[i]->fsyncdata_errors != 0 || c[i]->verify_errors != 0 )
+                  c[i]->verify_errors,
+                  c[i]->io_retries );
+        if( c[i]->pass_errors != 0 || c[i]->fsyncdata_errors != 0 || c[i]->verify_errors != 0 || c[i]->io_retries != 0 )
         {
-            pdf_add_text( pdf, NULL, errors, TEXT_SIZE_DATA, 450, yoffset, PDF_RED );
+            pdf_add_text( pdf, NULL, errors, TEXT_SIZE_DATA, 500, yoffset, PDF_RED );
         }
         else
         {
-            pdf_add_text( pdf, NULL, errors, TEXT_SIZE_DATA, 450, yoffset, PDF_DARK_GREEN );
+            pdf_add_text( pdf, NULL, errors, TEXT_SIZE_DATA, 500, yoffset, PDF_DARK_GREEN );
         }
 
         /* ************
@@ -383,14 +388,18 @@ int create_system_multi_disc_pdf( nwipe_thread_data_ptr_t* ptrx )
          */
         pdf_add_text( pdf, NULL, "Throughput:", TEXT_SIZE_DATA, 300, yoffset, PDF_GRAY );
         snprintf( throughput_txt, sizeof( throughput_txt ), "%s/sec", c[i]->throughput_txt );
-        pdf_add_text( pdf, NULL, throughput_txt, TEXT_SIZE_DATA, 360, yoffset, PDF_BLACK );
+        pdf_add_text( pdf, NULL, throughput_txt, TEXT_SIZE_DATA, 375, yoffset, PDF_BLACK );
 
         /********
          * Method
          */
+        char* p_nwipe_method_label_with_direction = 0;
+        p_nwipe_method_label_with_direction = nwipe_method_label_with_direction();
         yoffset = yoffset - line_spacing;  // next line
         pdf_add_text( pdf, NULL, "Method:", TEXT_SIZE_DATA, LEFT_MARGIN_TEXT, yoffset, PDF_GRAY );
-        pdf_add_text( pdf, NULL, nwipe_method_label( nwipe_options.method ), TEXT_SIZE_DATA, 150, yoffset, PDF_BLACK );
+        pdf_add_text( pdf, NULL, p_nwipe_method_label_with_direction, TEXT_SIZE_DATA, 150, yoffset, PDF_BLACK );
+        free( p_nwipe_method_label_with_direction );  // free string
+        p_nwipe_method_label_with_direction = NULL;  // get rid of dangling pointer
 
         /***********
          * prng type
@@ -452,6 +461,18 @@ int create_system_multi_disc_pdf( nwipe_thread_data_ptr_t* ptrx )
     /***************************************
      * Add SMBIOS/DMI host data page
      */
+
+    /* If the command line option --pdfduplex is active, insert a blank odd (recto) page before an even (verso) page. */
+    if( nwipe_options.PDF_duplex == 1 )
+    {
+        if( !( ( page_number + 1 ) % 2 ) )
+        {
+            pdf_add_blank_page(
+                pdf, &page_number, INTENTIONALLY_BLANK_X, INTENTIONALLY_BLANK_Y, PDF_TYPE_MULTI_DISC, NULL, d );
+        }
+    }
+
+    /* Write the SMBIOS/DMI info page to the PDF */
     pdf_add_text_host_info_page(
         pdf, &page_number, LEFT_MARGIN_TEXT, TOP_OF_TEXT_WINDOW_Y, PDF_TYPE_MULTI_DISC, NULL, d );
 
@@ -460,11 +481,43 @@ int create_system_multi_disc_pdf( nwipe_thread_data_ptr_t* ptrx )
      */
     for( i = 0; i < nwipe_misc_thread_data->nwipe_selected; i++ )
     {
+        /* If the command line option --pdfduplex is active, insert a blank odd (recto) page before an even (verso)
+         * page. */
+        if( nwipe_options.PDF_duplex == 1 )
+        {
+            if( !( ( page_number + 1 ) % 2 ) )
+            {
+                pdf_add_blank_page(
+                    pdf, &page_number, INTENTIONALLY_BLANK_X, INTENTIONALLY_BLANK_Y, PDF_TYPE_MULTI_DISC, NULL, d );
+            }
+        }
+
+        /* Write the smart data for a selected drive */
         result = nwipe_get_smart_data( d, PDF_TYPE_MULTI_DISC, &page_number, c[i] );
         if( result != 0 )
         {
             // fatal error, don't bother trying to save the file'
             nwipe_log( NWIPE_LOG_ERROR, "Function nwipe_get_smart_data() returned an error %u", result );
+            goto cleanup;
+        }
+
+        /* If the command line option --pdfduplex is active, insert a blank odd (recto) page before an even (verso)
+         * page. */
+        if( nwipe_options.PDF_duplex == 1 )
+        {
+            if( !( ( page_number + 1 ) % 2 ) )
+            {
+                pdf_add_blank_page(
+                    pdf, &page_number, INTENTIONALLY_BLANK_X, INTENTIONALLY_BLANK_Y, PDF_TYPE_MULTI_DISC, NULL, d );
+            }
+        }
+
+        /* Write the page containing the speed profile graph for a given drive */
+        result = create_pdf_speed_profile_page( d, PDF_TYPE_MULTI_DISC, &page_number, c[i] );
+        if( result != 0 )
+        {
+            // fatal error, don't bother trying to save the file'
+            nwipe_log( NWIPE_LOG_ERROR, "Function create_pdf_speed_profile_page() returned an error %u", result );
             goto cleanup;
         }
     }
@@ -480,6 +533,9 @@ int create_system_multi_disc_pdf( nwipe_thread_data_ptr_t* ptrx )
     for( i = 0; i < page_number; i++ )
     {
         pdf_display_status_icon( PDF_TYPE_MULTI_DISC, pdf_page_array[i] );
+
+        /* Display the page n of n in the bottom right of footer */
+        pdf_add_footer_page_numbers( pdf_page_array[i], i + 1, page_number );
     }
 
     /*****************************
@@ -511,5 +567,6 @@ int create_system_multi_disc_pdf( nwipe_thread_data_ptr_t* ptrx )
 cleanup:
     pdf_destroy( pdf );
     free( pdf_page_array );
+    free( d->logo_buffer );
     return 0;
 }

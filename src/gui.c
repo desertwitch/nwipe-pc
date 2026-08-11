@@ -2498,14 +2498,14 @@ void nwipe_gui_prng( void )
             mvwprintw( main_window, yy++, tab2, "Takuji Nishimura, is a generalized feedback shift" );
             mvwprintw( main_window, yy++, tab2, "register PRNG that is uniform and equidistributed" );
             mvwprintw( main_window, yy++, tab2, "in 623-dimensions with a proven period of        " );
-            mvwprintw( main_window, yy++, tab2, "2^19937-1." );
+            mvwprintw( main_window, yy++, tab2, "2^19937-1.                                       " );
             mvwprintw( main_window, yy++, tab2, "                                                 " );
             mvwprintw( main_window, yy++, tab2, "This implementation passes the Marsaglia Diehard " );
             mvwprintw( main_window, yy++, tab2, "test suite." );
         }
         else if( focused_prng == &nwipe_isaac )
         {
-            mvwprintw( main_window, yy++, tab2, "ISAAC, by Bob Jenkins, is a PRNG derived from RC4" );
+            mvwprintw( main_window, yy++, tab2, "ISAAC, by Bob Jenkins, is a CSPRNG derived from  " );
             mvwprintw( main_window, yy++, tab2, "RC4 with a minimum period of 2^40 and an expected" );
             mvwprintw( main_window, yy++, tab2, "period of 2^8295. It is difficult to recover the " );
             mvwprintw( main_window, yy++, tab2, "initial PRNG state by cryptanalysis of the ISAAC " );
@@ -2541,7 +2541,7 @@ void nwipe_gui_prng( void )
         }
         else if( focused_prng == &nwipe_xoroshiro256_prng )
         {
-            mvwprintw( main_window, yy++, tab2, "XORoshiro256 was designed by David Blackman      " );
+            mvwprintw( main_window, yy++, tab2, "XORoshiro-256 was designed by David Blackman     " );
             mvwprintw( main_window, yy++, tab2, "and Sebastiano Vigna for 128 bits. adapted to 256" );
             mvwprintw( main_window, yy++, tab2, "bits by Fabian Druschke, enhancing its capability" );
             mvwprintw( main_window, yy++, tab2, "for fast, high-quality pseudo-random numbers     " );
@@ -2551,7 +2551,7 @@ void nwipe_gui_prng( void )
             mvwprintw( main_window, yy++, tab2, "The simple arithmetic operations, shifts, XORs   " );
             mvwprintw( main_window, yy++, tab2, "and rotations ensure low computational complexity" );
             mvwprintw( main_window, yy++, tab2, "Combined with the 256 bit adaption, it provides  " );
-            mvwprintw( main_window, yy++, tab2, "efficient use especially for legacy systems " );
+            mvwprintw( main_window, yy++, tab2, "efficient use especially for legacy systems      " );
         }
         else if( focused_prng == &nwipe_splitmix64_prng )
         {
@@ -2569,8 +2569,8 @@ void nwipe_gui_prng( void )
                 mvwprintw( main_window, yy++, tab2, "by Fabian Druschke using the Linux kernel's  " );
                 mvwprintw( main_window, yy++, tab2, "AF_ALG cryptographic API for efficient pseudo" );
                 mvwprintw( main_window, yy++, tab2, "random data generation. Hardware acceleration" );
-                mvwprintw( main_window, yy++, tab2, "via AES-NI, makes AES-256 CTR ideal for      " );
-                mvwprintw( main_window, yy++, tab2, "secure and fast data wiping in nwipe.  " );
+                mvwprintw( main_window, yy++, tab2, "via AES-NI, makes AES-256-CTR ideal for      " );
+                mvwprintw( main_window, yy++, tab2, "secure and fast data wiping in nwipe.        " );
                 mvwprintw( main_window, yy++, tab2, "                                             " );
                 mvwprintw( main_window, yy++, tab2, "Compliant with NIST SP 800-38A, it is a      " );
                 mvwprintw( main_window, yy++, tab2, "global standard for encryption. Designed for " );
@@ -2585,7 +2585,7 @@ void nwipe_gui_prng( void )
                 mvwprintw( main_window, yy++, tab2, "CryptoAPI. It is not available because your  " );
                 mvwprintw( main_window, yy++, tab2, "CPU does not support the required AES-NI     " );
                 mvwprintw( main_window, yy++, tab2, "instruction set. You can still use all       " );
-                mvwprintw( main_window, yy++, tab2, "other PRNGs (e.g. xoroshiro-256, ISAAC, MT). " );
+                mvwprintw( main_window, yy++, tab2, "other PRNGs (e.g. XORoshiro-256, ISAAC, MT). " );
                 wattroff( main_window, A_DIM );
             }
         }
@@ -8295,6 +8295,86 @@ int compute_stats( void* ptr )
                 }
             }
 
+            /* ======================================================================
+             * GRAPH MIN/MAX TRACKING ENGINE (Adaptive Sub-Window Slice)
+             * Fills the 400 bucket min/max arrays, used to construct speed profile
+             * graph.
+             * ====================================================================== */
+            u64 bytes_10 = 0;
+            u64 times_10 = 0;
+            int idx = c[i]->speedring.position;
+            int sub_window_seconds = 10;  // Tracks localized shifts tightly
+
+            for( int j = 0; j < sub_window_seconds; j++ )
+            {
+                /* Safely step backward through the 300-slot ring buffer */
+                idx = ( idx - 1 + 300 ) % 300;
+
+                if( c[i]->speedring.times[idx] == 0 )
+                {
+                    break;  // Stop early if the drive thread hasn't run for 10 seconds yet
+                }
+
+                bytes_10 += c[i]->speedring.bytes[idx];
+                times_10 += c[i]->speedring.times[idx];
+            }
+
+            /* FIX 1: Change constraint from '>= sub_window_seconds' to '> 0'
+             * This allows ultra-fast wipes to log their throughput immediately,
+             * while also improving normal drives by drawing lines from second 1. */
+            if( times_10 > 0 && c[i]->round_size > 0 )
+            {
+                double throughput_10 = (double) bytes_10 / (double) times_10;
+
+                /* Map current byte progress cleanly to one of the 400 array buckets */
+                int bucket = (int) ( (double) c[i]->round_done / (double) c[i]->round_size * 400.0 );
+
+                /* Guard against an out-of-bounds array index at exactly 100% completion */
+                if( bucket >= 400 )
+                {
+                    bucket = 399;
+                }
+
+                /* Record maximum throughput for this chunk */
+                if( throughput_10 > c[i]->max_throughput[bucket] )
+                {
+                    c[i]->max_throughput[bucket] = throughput_10;
+                }
+
+                /* Record minimum throughput for this chunk */
+                if( c[i]->min_throughput[bucket] == 0 || throughput_10 < c[i]->min_throughput[bucket] )
+                {
+                    c[i]->min_throughput[bucket] = throughput_10;
+                }
+
+                /* FIX 2:Backfill previous uninitialized buckets.
+                 * Because fast wipes blitz across multiple progress buckets between 1-second ticks,
+                 * this bridges the gaps backward to form a continuous, readable line on the PDF. */
+                for( int b = bucket - 1; b >= 0; b-- )
+                {
+                    int backfill_performed = 0;
+
+                    if( c[i]->max_throughput[b] == 0.0f )
+                    {
+                        c[i]->max_throughput[b] = throughput_10;
+                        backfill_performed = 1;
+                    }
+                    if( c[i]->min_throughput[b] == 0.0f )
+                    {
+                        c[i]->min_throughput[b] = throughput_10;
+                        backfill_performed = 1;
+                    }
+
+                    /* If we hit a bucket that already contains real historical data from a
+                     * previous sampling period, stop backfilling to preserve accurate history. */
+                    if( !backfill_performed )
+                    {
+                        break;
+                    }
+                }
+            }
+            /* ====================================================================== */
+
             /* Calculate the average throughput */
             c[i]->throughput = (double) c[i]->round_done / (double) difftime( nwipe_time_now, c[i]->start_time );
         }
@@ -8347,6 +8427,8 @@ void nwipe_update_speedring( nwipe_speedring_t* speedring, u64 speedring_bytes, 
     {
         /* Ignore the first sample and initialize. */
         speedring->timeslast = speedring_now;
+        speedring->byteslast = speedring_bytes;
+
         return;
     }
 
