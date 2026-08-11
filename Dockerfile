@@ -8,6 +8,7 @@ WORKDIR /tmp/nwipe
 RUN apk update && \
     apk upgrade && \
     apk add --no-cache \
+        bash \
         git \
         automake \
         make \
@@ -48,7 +49,7 @@ RUN apk update && \
     make && \
     make install && \
     cd /tmp && \
-    apk del git automake make autoconf gcc g++ meson ninja wget && \
+    apk del bash git automake make autoconf gcc g++ meson ninja wget && \
     rm -rf nwipe
 
 WORKDIR /app
