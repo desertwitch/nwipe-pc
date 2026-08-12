@@ -202,7 +202,6 @@ static int nwipe_is_excluded_device( const char* candidate_devnode )
 /* Helper function for ATA Secure Erase, run ONCE per device */
 static int nwipe_device_ata_se_setup( nwipe_context_t* c )
 {
-    c->secure_erase_supported = 0;
     c->secure_erase_context = NULL;
 
     nwipe_se_ata_ctx* se_ata = malloc( sizeof( nwipe_se_ata_ctx ) );
@@ -259,6 +258,7 @@ static int nwipe_device_ata_se_setup( nwipe_context_t* c )
         return 0;
     }
 
+    c->secure_erase_supported = 0;
     nwipe_log( NWIPE_LOG_INFO, "%s: ATA Sanitize feature set not supported", c->device_name );
     nwipe_se_ata_destroy( se_ata );
     free( se_ata );
@@ -268,7 +268,6 @@ static int nwipe_device_ata_se_setup( nwipe_context_t* c )
 /* Helper function for NVMe Secure Erase, run ONCE per device */
 static int nwipe_device_nvme_se_setup( nwipe_context_t* c )
 {
-    c->secure_erase_supported = 0;
     c->secure_erase_context = NULL;
 #ifdef HAVE_LIBNVME
     /* Lazy init on first encountered NVMe device (expensive operation) */
@@ -343,6 +342,7 @@ static int nwipe_device_nvme_se_setup( nwipe_context_t* c )
         return 0;
     }
 
+    c->secure_erase_supported = 0;
     nwipe_log( NWIPE_LOG_INFO, "%s: NVMe controller reports no sanitize methods supported", c->device_name );
     nwipe_se_nvme_destroy( se_nvme );
     free( se_nvme );
@@ -780,6 +780,7 @@ int check_device( nwipe_context_t*** c, PedDevice* dev, int dcount )
      * Secure Erase: initialise context and detect capabilities
      * Setup helpers are self-contained (internally log as required)
      */
+    next_device->secure_erase_supported = -1;
     switch( next_device->device_type )
     {
         case NWIPE_DEVICE_ATA:
