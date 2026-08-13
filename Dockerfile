@@ -2,6 +2,7 @@ FROM alpine:3.22
 
 ARG BRANCH=master
 ARG COMMIT=unknown
+ARG LIBNVME_VERSION=1.16.2
 
 WORKDIR /tmp/nwipe
 
@@ -29,15 +30,15 @@ RUN apk update && \
         json-c-dev \
         wget && \
     cd /tmp && \
-    wget https://github.com/linux-nvme/libnvme/archive/refs/tags/v1.16.1.tar.gz && \
-    tar xvfz v1.16.1.tar.gz && \
-    cd libnvme-1.16.1 && \
+    wget "https://github.com/linux-nvme/libnvme/archive/refs/tags/v${LIBNVME_VERSION}.tar.gz" && \
+    tar xvfz "v${LIBNVME_VERSION}.tar.gz" && \
+    cd "libnvme-${LIBNVME_VERSION}" && \
     meson setup .build && \
     meson compile -C .build && \
     meson install -C .build && \
-    ldconfig /usr/local/lib || true && \
+    ldconfig /usr/local/lib && \
     cd /tmp && \
-    rm -rf libnvme-1.16.1 v1.16.1.tar.gz && \
+    rm -rf "libnvme-${LIBNVME_VERSION}" "v${LIBNVME_VERSION}.tar.gz" && \
     cd /tmp/nwipe && \
     git clone --branch ${BRANCH} https://github.com/desertwitch/nwipe-pc.git . && \
     if [ "$BRANCH" = "devel" ]; then \
