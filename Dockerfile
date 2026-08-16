@@ -5,8 +5,9 @@ ARG COMMIT=unknown
 ARG LIBNVME_VERSION=1.16.2
 ARG NWIPE_GIT_HASH=${COMMIT}
 
-WORKDIR /tmp/nwipe
+ENV TERM=xterm
 
+WORKDIR /tmp/nwipe
 COPY . /tmp/nwipe
 
 RUN apk update && \
@@ -52,10 +53,10 @@ RUN apk update && \
     make install && \
     cd /tmp && \
     apk del bash automake make autoconf gcc g++ meson ninja wget && \
-    rm -rf nwipe
+    rm -rf nwipe && \
+    ldd /usr/local/bin/nwipe && \
+    /usr/local/bin/nwipe -V
 
 WORKDIR /app
-
-ENV TERM=xterm
 
 CMD ["/usr/local/bin/nwipe"]
