@@ -4,13 +4,16 @@
 [![ci-ubuntu-latest](https://github.com/desertwitch/nwipe-pc/actions/workflows/ci-ubuntu-latest.yml/badge.svg)](https://github.com/desertwitch/nwipe-pc/actions/workflows/ci-ubuntu-latest.yml)
 [![docker-package](https://github.com/desertwitch/nwipe-pc/actions/workflows/docker-package.yml/badge.svg)](https://github.com/desertwitch/nwipe-pc/actions/workflows/docker-package.yml)
 
-**nwipe-pc is a fork of nwipe, with patched-in support for pre-clearing disks for Unraid.**
+nwipe-pc is a fork of nwipe, with added support for:
 
-It is eventually planned to be submitted for upstreaming into nwipe (when fully stable).
+- Pre-clearing disks for direct use with Unraid OS
+- ATA and NVMe secure erase (hardware-native sanitize)
 
-This is the primary reason the binary name remains the same for now (for drop-in usage).
+The developer is a regular contributor to upstream nwipe, so this fork isn't meant to compete with it - it's a staging ground for upstream patches, while also giving users who need these specific features early access.
 
-You can use it both on Unraid itself or other Linux distributions (compiled or containerized):
+> [!NOTE]
+> This fork is not intended for distribution packaging or general public use.  
+> Please use upstream instead unless you specifically require the above features.
 
 ### Use on Unraid:
 Install the **nwipe (with Preclear)** plugin from the **Apps** tab - it comes with this fork of nwipe.
@@ -38,6 +41,10 @@ docker run --rm -it --privileged ghcr.io/desertwitch/nwipe-pc:latest
 ### Use building from source:
 
 To build from source, follow the compilation instructions outlined in the regular manual.
+
+> [!WARNING]
+> The text below this warning is copied verbatim from the upstream manual.  
+> Any badges, links and guides point to the upstream project, not this fork of nwipe.
 
 # nwipe
 
