@@ -11,10 +11,6 @@ nwipe-pc is a fork of nwipe, with added support for:
 
 The developer is a regular contributor to upstream nwipe, so this fork isn't meant to compete with it - it's a staging ground for upstream patches, while also giving users who need these specific features early access.
 
-> [!NOTE]
-> This fork is not intended for distribution packaging or general public use.  
-> Please use upstream instead unless you specifically require the above features.
-
 ### Use on Unraid:
 Install the **nwipe (with Preclear)** plugin from the **Apps** tab - it comes with this fork of nwipe.
 
@@ -41,6 +37,10 @@ docker run --rm -it --privileged ghcr.io/desertwitch/nwipe-pc:latest
 ### Use building from source:
 
 To build from source, follow the compilation instructions outlined in the regular manual.
+
+> [!NOTE]
+> This fork is not intended for distribution packaging or general public use.  
+> Please use upstream instead unless you specifically require the above features.
 
 > [!WARNING]
 > The text below this warning is copied verbatim from the upstream manual.  
