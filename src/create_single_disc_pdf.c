@@ -106,6 +106,10 @@ int create_single_disc_pdf( nwipe_thread_data_ptr_t* ptrx, nwipe_context_t* ptr 
     /* ------------------ */
     /* Initialise Various */
 
+    /* Is there an external /etc/nwipe/logo.jpg [png/ppm/pgm/bmp] file? */
+    d->logo_buffer = 0;
+    d->logo_buffer = check_and_load_logo( &( d->logo_len ) );
+
     /* Used to display correct icon on page 2 */
     status_icon = 0;  // zero don't display icon, see header STATUS_ICON_..
 
@@ -325,11 +329,14 @@ int create_single_disc_pdf( nwipe_thread_data_ptr_t* ptrx, nwipe_context_t* ptr 
     /********
      * Method
      */
+    char* p_nwipe_method_label_with_direction = 0;
+    p_nwipe_method_label_with_direction = nwipe_method_label_with_direction();
     pdf_add_text( pdf, NULL, "Method:", 12, 60, 270, PDF_GRAY );
     pdf_set_font( pdf, "Helvetica-Bold" );
-    pdf_add_text( pdf, NULL, nwipe_method_label( nwipe_options.method ), text_size_data, 110, 270, PDF_BLACK );
+    pdf_add_text( pdf, NULL, p_nwipe_method_label_with_direction, text_size_data, 110, 270, PDF_BLACK );
     pdf_set_font( pdf, "Helvetica" );
-
+    free( p_nwipe_method_label_with_direction );  // free string
+    p_nwipe_method_label_with_direction = NULL;  // get rid of dangling pointer
     /***********
      * prng type
      */
@@ -396,22 +403,28 @@ int create_single_disc_pdf( nwipe_thread_data_ptr_t* ptrx, nwipe_context_t* ptr 
     pdf_add_text( pdf, NULL, "Throughput:", 12, 300, 190, PDF_GRAY );
     snprintf( throughput_txt, sizeof( throughput_txt ), "%s/sec", c->throughput_txt );
     pdf_set_font( pdf, "Helvetica-Bold" );
-    pdf_add_text( pdf, NULL, throughput_txt, text_size_data, 370, 190, PDF_BLACK );
+    pdf_add_text( pdf, NULL, throughput_txt, text_size_data, 385, 190, PDF_BLACK );
     pdf_set_font( pdf, "Helvetica" );
 
     /********
      * Errors
      */
-    pdf_add_text( pdf, NULL, "Errors(pass/sync/verify):", 12, 60, 190, PDF_GRAY );
+    pdf_add_text( pdf, NULL, "Errors(pass/sync/verify/retries):", 12, 60, 190, PDF_GRAY );
     pdf_set_font( pdf, "Helvetica-Bold" );
-    snprintf( errors, sizeof( errors ), "%llu/%llu/%llu", c->pass_errors, c->fsyncdata_errors, c->verify_errors );
-    if( c->pass_errors != 0 || c->fsyncdata_errors != 0 || c->verify_errors != 0 )
+    snprintf( errors,
+              sizeof( errors ),
+              "%llu/%llu/%llu/%llu",
+              c->pass_errors,
+              c->fsyncdata_errors,
+              c->verify_errors,
+              c->io_retries );
+    if( c->pass_errors != 0 || c->fsyncdata_errors != 0 || c->verify_errors != 0 || c->io_retries != 0 )
     {
-        pdf_add_text( pdf, NULL, errors, text_size_data, 195, 190, PDF_RED );
+        pdf_add_text( pdf, NULL, errors, text_size_data, 230, 190, PDF_RED );
     }
     else
     {
-        pdf_add_text( pdf, NULL, errors, text_size_data, 195, 190, PDF_DARK_GREEN );
+        pdf_add_text( pdf, NULL, errors, text_size_data, 230, 190, PDF_DARK_GREEN );
     }
     pdf_set_font( pdf, "Helvetica" );
 
@@ -486,10 +499,28 @@ int create_single_disc_pdf( nwipe_thread_data_ptr_t* ptrx, nwipe_context_t* ptr 
     }
     pdf_set_font( pdf, "Helvetica" );
 
+    /**********************************
+     * If the command line option --pdfduplex is active, insert a blank odd (recto) page
+     * before an even (verso) page.
+     */
+    if( nwipe_options.PDF_duplex == 1 )
+    {
+        if( !( ( page_number + 1 ) % 2 ) )
+        {
+            pdf_add_blank_page(
+                pdf, &page_number, INTENTIONALLY_BLANK_X, INTENTIONALLY_BLANK_Y, PDF_TYPE_SINGLE_DISC, c, d );
+        }
+    }
+
     /***************************************
      * Populate subsequent pages with smart data
      */
     nwipe_get_smart_data( d, PDF_TYPE_SINGLE_DISC, &page_number, c );
+
+    /***************************************
+     * Add speed profile graph
+     */
+    create_pdf_speed_profile_page( d, PDF_TYPE_SINGLE_DISC, &page_number, c );
 
     /*****************************
      * Create the reports filename
@@ -511,5 +542,6 @@ int create_single_disc_pdf( nwipe_thread_data_ptr_t* ptrx, nwipe_context_t* ptr 
 
     pdf_save( pdf, c->PDF_filename );
     pdf_destroy( pdf );
+    free( d->logo_buffer );
     return 0;
 }

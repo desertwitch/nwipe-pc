@@ -150,6 +150,9 @@ int nwipe_options_parse( int argc, char** argv )
         /* Enables a field on the PDF that holds a tag that identifies the host computer */
         { "pdftag", no_argument, 0, 0 },
 
+        /* Enables PDF duplex mode where each new section starts on a odd (recto) page */
+        { "pdfduplex", no_argument, 0, 0 },
+
         /* Display program version. */
         { "verbose", no_argument, 0, 0 },
 
@@ -170,8 +173,8 @@ int nwipe_options_parse( int argc, char** argv )
 
     /*
      * Determines and sets the default PRNG based on AES-NI support and system architecture.
-     * It selects AES-CTR PRNG if AES-NI is supported, xoroshiro256 for 64-bit systems without AES-NI,
-     * and add lagged Fibonacci for 32-bit systems.
+     * It selects AES-256-CTR CSPRNG if AES-NI is supported, XORoshiro-256 for 64-bit systems without AES-NI,
+     * and Additive Lagged Fibonacci Generator for 32-bit systems.
      */
 
     if( has_aes_ni() )
@@ -204,6 +207,7 @@ int nwipe_options_parse( int argc, char** argv )
     nwipe_options.noabort_block_errors = 0;
     nwipe_options.PDF_toggle_host_info = 0; /* Default: host visibility on PDF disabled */
     nwipe_options.PDFtag = 0;
+    nwipe_options.PDF_duplex = 0;  // 0 = duplex switched off, 1 = on.
     memset( nwipe_options.logfile, '\0', sizeof( nwipe_options.logfile ) );
     memset( nwipe_options.PDFreportpath, '\0', sizeof( nwipe_options.PDFreportpath ) );
     strncpy( nwipe_options.PDFreportpath, ".", 2 );
@@ -441,7 +445,7 @@ int nwipe_options_parse( int argc, char** argv )
 
                 if( strcmp( nwipe_options_long[i].name, "nousb" ) == 0 )
                 {
-                    /* check for the full option name, as getopt_long() allows abreviations and can lead to unintended
+                    /* check for the full option name, as getopt_long() allows abbreviations and can lead to unintended
                      * consequences when the user makes a typo */
                     if( strcmp( argv[optind - 1], "--nousb" ) == 0 )
                     {
@@ -656,6 +660,12 @@ int nwipe_options_parse( int argc, char** argv )
                 if( strcmp( nwipe_options_long[i].name, "pdftag" ) == 0 )
                 {
                     nwipe_options.PDFtag = 1;
+                    break;
+                }
+
+                if( strcmp( nwipe_options_long[i].name, "pdfduplex" ) == 0 )
+                {
+                    nwipe_options.PDF_duplex = 1;
                     break;
                 }
 
@@ -1020,11 +1030,11 @@ void nwipe_options_log( void )
     else if( nwipe_options.prng == &nwipe_splitmix64_prng )
         nwipe_log( NWIPE_LOG_NOTICE, "  prng         = SplitMix64" );
     else if( nwipe_options.prng == &nwipe_aes_ctr_prng )
-        nwipe_log( NWIPE_LOG_NOTICE, "  prng         = AES-CTR (CSPRNG)" );
+        nwipe_log( NWIPE_LOG_NOTICE, "  prng         = AES-256-CTR (CSPRNG)" );
     else if( nwipe_options.prng == &nwipe_isaac )
-        nwipe_log( NWIPE_LOG_NOTICE, "  prng         = Isaac" );
+        nwipe_log( NWIPE_LOG_NOTICE, "  prng         = ISAAC (CSPRNG)" );
     else if( nwipe_options.prng == &nwipe_isaac64 )
-        nwipe_log( NWIPE_LOG_NOTICE, "  prng         = Isaac64" );
+        nwipe_log( NWIPE_LOG_NOTICE, "  prng         = ISAAC-64 (CSPRNG)" );
     else if( nwipe_options.prng == &nwipe_chacha20_prng )
         nwipe_log( NWIPE_LOG_NOTICE, "  prng         = ChaCha20 (CSPRNG)" );
     else

@@ -18,6 +18,19 @@ jobs:
       - name: Install the dependencies
         run: sudo apt-get install -y build-essential pkg-config automake libncurses5-dev autotools-dev libparted-dev libconfig-dev libconfig++-dev dmidecode clang-format
 
+      - name: Install meson build system
+        run: sudo apt-get install -y meson ninja-build libjson-c-dev
+
+      - name: Build libnvme dependency
+        run: |
+          wget https://github.com/linux-nvme/libnvme/archive/refs/tags/v1.16.1.tar.gz
+          tar xvfz v1.16.1.tar.gz
+          cd libnvme-1.16.1
+          meson setup .build
+          meson compile -C .build
+          sudo meson install -C .build
+          sudo ldconfig
+
       - name: Generate the autogen files
         run: ./autogen.sh
 

@@ -68,6 +68,19 @@ typedef enum {
     NWIPE_IO_MODE_CACHED /* Force cached I/O, never attempt O_DIRECT. */
 } nwipe_io_mode_t;
 
+typedef enum {
+    NWIPE_SECURE_ERASE_TYPE_UNKNOWN = 0,
+    NWIPE_SECURE_ERASE_TYPE_ATA, /* ATA */
+    NWIPE_SECURE_ERASE_TYPE_NVME /* NVMe */
+} nwipe_secure_erase_type_t;
+
+typedef enum {
+    NWIPE_SECURE_ERASE_UNPLANNED = 0, /* Unused: Do not run a secure erase */
+    NWIPE_SECURE_ERASE_PLANNED, /* Unused: Run a (configured) secure erase */
+    NWIPE_SECURE_ERASE_SUCCESS, /* Secure erase was successful */
+    NWIPE_SECURE_ERASE_FAILURE /* Secure erase has failed */
+} nwipe_secure_erase_status_t;
+
 /* I/O direction for data path. */
 typedef enum {
     NWIPE_IO_DIRECTION_FORWARD = 0, /* Start -> End */
@@ -75,8 +88,8 @@ typedef enum {
     NWIPE_IO_DIRECTION_SCATTER /* Random Order */
 } nwipe_io_direction_t;
 
-#define NWIPE_KNOB_SPEEDRING_SIZE 30
-#define NWIPE_KNOB_SPEEDRING_GRANULARITY 10
+#define NWIPE_KNOB_SPEEDRING_SIZE 300
+#define NWIPE_KNOB_SPEEDRING_GRANULARITY 1
 
 typedef struct nwipe_speedring_t_
 {
@@ -200,11 +213,19 @@ typedef struct nwipe_context_t_
     int wipe_status;  // Wipe finished = 0, wipe in progress = 1, wipe yet to start = -1.
     char wipe_status_txt[10];  // ERASED, FAILED, ABORTED, INSANITY
     int spinner_idx;  // Index into the spinner character array
-    char spinner_character[1];  // The current spinner character
-    double duration;  // Duration of the wipe in seconds
-    char duration_str[20];  // The duration string in hh:mm:ss
+    char spinner_character[1];  // The current spinner character// Keep for legacy date/time stamps
+    //
+    // Keep for legacy date/time stamps
     time_t start_time;  // Start time of wipe
     time_t end_time;  // End time of wipe
+    double duration;  // Duration of the wipe in seconds
+    char duration_str[20];  // The duration string in hh:mm:ss
+    //
+    // NEW: High-resolution timing fields for very fast small devices such as loop devices, for speed profiling
+    struct timespec start_clock;
+    struct timespec end_clock;
+    //
+    double exact_duration;  // Duration in seconds with decimal precision (e.g., 0.000250)
     u64 fsyncdata_errors;  // The number of fsyncdata errors across all passes.
     u64 io_retries;  // The number of I/O retries across all passes.
     char PDF_filename[FILENAME_MAX];  // The filename of the PDF certificate/report.
@@ -229,6 +250,15 @@ typedef struct nwipe_context_t_
     int test_use1;
     int test_use2;
 
+    int secure_erase_supported;  // Secure Erase:
+                                 // -2: Not probed/type not supported
+                                 // -1: Device did not understand probe
+                                 //  0: Confirmed not supported by device
+                                 //  1: Confirmed to be supported by device
+    nwipe_secure_erase_type_t secure_erase_type; /* Secure Erase: ATA or NVMe */
+    nwipe_secure_erase_status_t secure_erase_status; /* Secure Erase: Status */
+    void* secure_erase_context; /* Secure Erase: Pointer to context */
+
     /*
      * Identity contains the raw serial number of the drive
      * (where applicable), however, for use within nwipe use the
@@ -236,6 +266,8 @@ typedef struct nwipe_context_t_
      * c[i]->serial_no) and not c[i]->identity.serial_no);
      */
     struct hd_driveid identity;
+    float min_throughput[400];  // buckets for storing minimum speed of drive
+    float max_throughput[400];  // buckets for storing maximum speed of drive
 } nwipe_context_t;
 
 /*
@@ -276,6 +308,8 @@ typedef struct
     char dmidecode_processor_manufacturer[DMIDECODE_RESULT_LENGTH];  // host info
     char dmidecode_processor_version[DMIDECODE_RESULT_LENGTH];  // host info
     char dmidecode_processor_frequency[DMIDECODE_RESULT_LENGTH];  // host info
+    unsigned char* logo_buffer;  // Pointer to an external logo for the PDFs, NULL if not
+    size_t logo_len;  // length of logo buffer/logo image file
 } nwipe_misc_thread_data_t;
 
 /*

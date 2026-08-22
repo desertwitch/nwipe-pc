@@ -73,10 +73,10 @@ int nwipe_get_smart_data( nwipe_misc_thread_data_t* d, size_t pdf_type, size_t* 
     char* pdata;
     char page_title[50];
 
-    char smartctl_command[] = "smartctl -a %s";
-    char smartctl_command2[] = "/sbin/smartctl -a %s";
-    char smartctl_command3[] = "/usr/bin/smartctl -a %s";
-    char smartctl_command4[] = "/usr/sbin/smartctl -a %s";
+    char smartctl_command[] = "smartctl -x %s";
+    char smartctl_command2[] = "/sbin/smartctl -x %s";
+    char smartctl_command3[] = "/usr/bin/smartctl -x %s";
+    char smartctl_command4[] = "/usr/sbin/smartctl -x %s";
     char final_cmd_smartctl[sizeof( smartctl_command3 ) + 256];
     char result[512];
     char buffer[512];
@@ -290,12 +290,21 @@ void pdf_header_footer_text( nwipe_misc_thread_data_t* d,
     config_setting_t* setting;
     extern config_t nwipe_cfg;
 
+    pdf_set_font( pdf, "Helvetica-Bold" );
     pdf_add_text_wrap( pdf, NULL, pdf_footer, 12, 0, 30, 0, PDF_BLACK, page_width, PDF_ALIGN_CENTER, &height );
     pdf_add_line( pdf, NULL, 50, 50, 550, 50, 3, PDF_BLACK );  // Footer full width Line
     pdf_add_line( pdf, NULL, 50, 650, 550, 650, 3, PDF_BLACK );  // Header full width Line
     pdf_add_line( pdf, NULL, 175, 734, 425, 734, 3, PDF_BLACK );  // Header Page number, disk model divider line
-    pdf_add_image_data( pdf, NULL, 45, 665, 100, 100, bin2c_shred_db_jpg, 27063 );
-    pdf_set_font( pdf, "Helvetica-Bold" );
+    if( d->logo_buffer != NULL )
+    {
+        // Custom logo found and loaded successfully
+        pdf_add_image_data( pdf, NULL, 45, 665, 100, 100, d->logo_buffer, d->logo_len );
+    }
+    else
+    {
+        // Fallback to standard nwipe logo
+        pdf_add_image_data( pdf, NULL, 45, 665, 100, 100, bin2c_shred_db_jpg, 27063 );
+    }
 
     if( nwipe_options.PDFtag || nwipe_options.PDF_toggle_host_info )
     {
@@ -415,7 +424,7 @@ void pdf_add_text_size_real( float xoff, float yoff, nwipe_context_t* c )
     if( c->device_type == NWIPE_DEVICE_NVME || c->device_type == NWIPE_DEVICE_VIRT
         || c->HPA_status == HPA_NOT_APPLICABLE )
     {
-        snprintf( device_size, sizeof( device_size ), "%s,%llib", c->device_size_text, c->device_size );
+        snprintf( device_size, sizeof( device_size ), "%s,%lliB", c->device_size_text, c->device_size );
         pdf_add_text( pdf, NULL, device_size, text_size_data, xoff, yoff, PDF_DARK_GREEN );
     }
     else
@@ -578,7 +587,7 @@ void pdf_add_text_status_of_erasure( float text_xoff,
                                      float angle,
                                      nwipe_context_t* c )
 {
-    if( !strcmp( c->wipe_status_txt, "ERASED" )
+    if( !strcmp( c->wipe_status_txt, "ERASED" ) && c->io_retries == 0
         && ( c->HPA_status == HPA_DISABLED || c->HPA_status == HPA_NOT_APPLICABLE || c->device_type == NWIPE_DEVICE_NVME
              || c->device_type == NWIPE_DEVICE_VIRT ) )
     {
@@ -599,7 +608,7 @@ void pdf_add_text_status_of_erasure( float text_xoff,
     else
     {
         if( !strcmp( c->wipe_status_txt, "ERASED" )
-            && ( c->HPA_status == HPA_ENABLED || c->HPA_status == HPA_UNKNOWN ) )
+            && ( c->HPA_status == HPA_ENABLED || c->HPA_status == HPA_UNKNOWN || c->io_retries != 0 ) )
         {
             pdf_add_ellipse(
                 pdf, NULL, ellipse_xoff, ellipse_yoff, ellipse_xradius, ellipse_yradius, 2, PDF_RED, PDF_BLACK );
@@ -959,4 +968,149 @@ void pdf_add_text_host_info_page( void* pdf,
         pdf_add_text( pdf, NULL, buffer, TEXT_SIZE_DATA, xoff, yoff, PDF_BLACK );
         yoff -= 12;
     }
+}
+
+void pdf_add_blank_page( void* pdf,
+                         size_t* page_number,
+                         float xoff,
+                         float yoff,
+                         size_t pdf_type,
+                         nwipe_context_t* c,
+                         nwipe_misc_thread_data_t* d )
+{
+    char page_title[50];
+
+    /* Create a new page */
+    ( *page_number )++;
+    pdf_append_page_and_update_index( pdf, *page_number );
+
+    /* Create the header and footer for this host data page */
+    snprintf( page_title, sizeof( page_title ), "Page %zu - Intentionally Blank", *page_number );
+    pdf_header_footer_text( d, c, page_title, pdf_type, PDF_PAGE_ERASURE_DATA );
+    pdf_set_font( pdf, "Courier-Bold" );
+
+    pdf_add_text( pdf, NULL, "Page Intentionally Blank", INTENTIONALLY_BLANK_TEXT_SIZE, xoff, yoff, PDF_BLACK );
+
+    /* Display the appropriate status icon (green tick, red cross, tick with exclamation) for
+     * the single disk PDF. For multi disc PDFs the status icon is written upon completion
+     * of the entire PDF within the create_system_multidisc_pdf() function.
+     */
+    if( pdf_type == PDF_TYPE_SINGLE_DISC )
+    {
+        pdf_display_status_icon( PDF_TYPE_SINGLE_DISC, NULL );
+    }
+}
+
+void pdf_add_footer_page_numbers( void* pp, size_t page_number, size_t total_pages )
+{
+    char page_info[50] = ""; /* page n of n */
+    pdf_set_font( pdf, "Courier-Bold" );
+    snprintf( page_info, sizeof( page_info ), "Page %zu of %zu", page_number, total_pages );
+    pdf_add_text( pdf, pp, page_info, 8, 485, 35, PDF_BLACK );
+}
+
+/**
+ * Checks for a custom nwipe logo in /etc/nwipe/ with various extensions.
+ * * @param out_len Pointer to a size_t where the file length will be stored.
+ * @return Pointer to the allocated image buffer on success, or NULL on failure.
+ * NOTE: The caller is responsible for calling free() on the returned pointer.
+ */
+unsigned char* check_and_load_logo( size_t* out_len )
+{
+    const char* extensions[] = { "jpg", "png", "ppm", "pgm", "bmp" };
+    const int ext_count = sizeof( extensions ) / sizeof( extensions[0] );
+
+    char filepath[256];
+    FILE* fp = NULL;
+    unsigned char* buffer = NULL;
+    long file_size = 0;
+
+    if( out_len == NULL )
+    {
+        return NULL;
+    }
+
+    for( int i = 0; i < ext_count; i++ )
+    {
+        snprintf( filepath, sizeof( filepath ), "/etc/nwipe/logo.%s", extensions[i] );
+
+        fp = fopen( filepath, "rb" );
+        if( fp != NULL )
+        {
+            if( fseek( fp, 0, SEEK_END ) == 0 )
+            {
+                file_size = ftell( fp );
+                if( file_size > 0 )
+                {
+                    rewind( fp );
+
+                    buffer = (unsigned char*) malloc( file_size );
+                    if( buffer != NULL )
+                    {
+                        size_t bytes_read = fread( buffer, 1, file_size, fp );
+
+                        // If read is successful, assign length and return the buffer immediately
+                        if( bytes_read == (size_t) file_size )
+                        {
+                            *out_len = (size_t) file_size;
+                            fclose( fp );
+                            return buffer;
+                        }
+
+                        // Clean up allocation if read failed
+                        free( buffer );
+                    }
+                }
+            }
+            fclose( fp );
+        }
+    }
+
+    // Explicitly set length to 0 if no file was found or read failed
+    *out_len = 0;
+    return NULL;
+}
+
+// #include <stdio.h>
+// #include <stdlib.h>
+// #include <string.h>
+
+/* Forward declarations of nwipe structures/functions for context */
+// extern const char* nwipe_method_label(int method);
+// extern struct nwipe_options_t nwipe_options;
+
+/**
+ * Returns the method label with the direction appended.
+ * Note: The caller is responsible for freeing the returned string.
+ */
+char* nwipe_method_label_with_direction( void )
+{
+    const char* base_label = nwipe_method_label( nwipe_options.method );
+    const char* suffix = "";
+
+    switch( nwipe_options.io_direction )
+    {
+        case NWIPE_IO_DIRECTION_REVERSE:
+            suffix = " (R)";
+            break;
+        case NWIPE_IO_DIRECTION_SCATTER:
+            suffix = " (S)";
+            break;
+        case NWIPE_IO_DIRECTION_FORWARD:
+        default:
+            suffix = "";
+            break;
+    }
+
+    // Calculate total length (base + suffix + null terminator)
+    size_t total_len = strlen( base_label ) + strlen( suffix ) + 1;
+    char* result = malloc( total_len );
+
+    if( result == NULL )
+    {
+        return NULL;  // Memory allocation failed
+    }
+
+    snprintf( result, total_len, "%s%s", base_label, suffix );
+    return result;
 }

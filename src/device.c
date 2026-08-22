@@ -19,6 +19,9 @@
  *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  *
  */
+#ifdef HAVE_CONFIG_H
+#include <config.h> /* HAVE_LIBNVME */
+#endif
 
 #ifndef _DEFAULT_SOURCE
 #define _DEFAULT_SOURCE
@@ -28,6 +31,10 @@
 #include <stdint.h>
 #include <ctype.h>
 #include <limits.h>
+#include <dirent.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 
 #include "nwipe.h"
 #include "context.h"
@@ -40,10 +47,13 @@
 #include <errno.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/sysmacros.h>
 #include <fcntl.h>
 #include <ctype.h>
 #include "hpa_dco.h"
 #include "miscellaneous.h"
+#include "se_ata.h"
+#include "se_nvme.h"
 
 #include <parted/parted.h>
 #include <parted/debug.h>
@@ -74,6 +84,12 @@
 int check_device( nwipe_context_t*** c, PedDevice* dev, int dcount );
 char* trim( char* str );
 static void nwipe_normalize_serial( char* serial );
+
+#ifdef HAVE_LIBNVME
+/* This is expensive, we can't do it for every single device */
+static nwipe_se_nvme_topo nvme_topo;
+static int nvme_topo_ready = 0;
+#endif
 
 /*
  * Resolve a device path (including /dev/disk/by-* symlinks) to its
@@ -109,6 +125,222 @@ static int nwipe_path_to_rdev( const char* path, dev_t* out_rdev )
     }
 
     *out_rdev = st.st_rdev;
+    return 0;
+}
+
+static int nwipe_sysfs_read_dev( const char* sysfs_path, dev_t* out_rdev )
+{
+    char dev_path[PATH_MAX];
+    FILE* fp;
+    unsigned int maj;
+    unsigned int min;
+    int ret;
+
+    if( sysfs_path == NULL || out_rdev == NULL )
+    {
+        errno = EINVAL;
+        return -1;
+    }
+
+    ret = snprintf( dev_path, sizeof( dev_path ), "%s/dev", sysfs_path );
+    if( ret < 0 || (size_t) ret >= sizeof( dev_path ) )
+    {
+        errno = ENAMETOOLONG;
+        return -1;
+    }
+
+    fp = fopen( dev_path, "r" );
+    if( fp == NULL )
+    {
+        return -1;
+    }
+
+    ret = fscanf( fp, "%u:%u", &maj, &min );
+    fclose( fp );
+
+    if( ret != 2 )
+    {
+        errno = EINVAL;
+        return -1;
+    }
+
+    *out_rdev = makedev( maj, min );
+    return 0;
+}
+
+static int nwipe_sysfs_path_is_partition( const char* sysfs_path )
+{
+    char partition_path[PATH_MAX];
+    int ret;
+
+    if( sysfs_path == NULL )
+    {
+        return 0;
+    }
+
+    ret = snprintf( partition_path, sizeof( partition_path ), "%s/partition", sysfs_path );
+    if( ret < 0 || (size_t) ret >= sizeof( partition_path ) )
+    {
+        return 0;
+    }
+
+    return access( partition_path, F_OK ) == 0;
+}
+
+static int nwipe_sysfs_device_depends_on( dev_t device_rdev, dev_t candidate_rdev, int depth )
+{
+    char sysfs_link[64];
+    char sysfs_path[PATH_MAX];
+    char slaves_path[PATH_MAX];
+    int ret;
+    DIR* slaves_dir;
+    struct dirent* entry;
+
+    if( device_rdev == candidate_rdev )
+    {
+        return 1;
+    }
+
+    if( depth > 32 )
+    {
+        return 0;
+    }
+
+    ret = snprintf(
+        sysfs_link, sizeof( sysfs_link ), "/sys/dev/block/%u:%u", major( device_rdev ), minor( device_rdev ) );
+    if( ret < 0 || (size_t) ret >= sizeof( sysfs_link ) )
+    {
+        return 0;
+    }
+
+    if( realpath( sysfs_link, sysfs_path ) == NULL )
+    {
+        return 0;
+    }
+
+    if( nwipe_sysfs_path_is_partition( sysfs_path ) )
+    {
+        char parent_path[PATH_MAX];
+        char* slash;
+        dev_t parent_rdev;
+
+        strncpy( parent_path, sysfs_path, sizeof( parent_path ) );
+        parent_path[sizeof( parent_path ) - 1] = 0;
+
+        slash = strrchr( parent_path, '/' );
+        if( slash != NULL )
+        {
+            *slash = 0;
+
+            if( nwipe_sysfs_read_dev( parent_path, &parent_rdev ) == 0
+                && nwipe_sysfs_device_depends_on( parent_rdev, candidate_rdev, depth + 1 ) )
+            {
+                return 1;
+            }
+        }
+    }
+
+    ret = snprintf( slaves_path, sizeof( slaves_path ), "%s/slaves", sysfs_path );
+    if( ret < 0 || (size_t) ret >= sizeof( slaves_path ) )
+    {
+        return 0;
+    }
+
+    slaves_dir = opendir( slaves_path );
+    if( slaves_dir == NULL )
+    {
+        return 0;
+    }
+
+    while( ( entry = readdir( slaves_dir ) ) != NULL )
+    {
+        char slave_link[PATH_MAX];
+        char slave_path[PATH_MAX];
+        dev_t slave_rdev;
+
+        if( strcmp( entry->d_name, "." ) == 0 || strcmp( entry->d_name, ".." ) == 0 )
+        {
+            continue;
+        }
+
+        ret = snprintf( slave_link, sizeof( slave_link ), "%s/%s", slaves_path, entry->d_name );
+        if( ret < 0 || (size_t) ret >= sizeof( slave_link ) )
+        {
+            continue;
+        }
+
+        if( realpath( slave_link, slave_path ) == NULL )
+        {
+            continue;
+        }
+
+        if( nwipe_sysfs_read_dev( slave_path, &slave_rdev ) == 0
+            && nwipe_sysfs_device_depends_on( slave_rdev, candidate_rdev, depth + 1 ) )
+        {
+            closedir( slaves_dir );
+            return 1;
+        }
+    }
+
+    closedir( slaves_dir );
+    return 0;
+}
+
+static int nwipe_mountinfo_line_to_rdev( const char* line, dev_t* out_rdev )
+{
+    unsigned int maj;
+    unsigned int min;
+
+    if( line == NULL || out_rdev == NULL )
+    {
+        errno = EINVAL;
+        return -1;
+    }
+
+    if( sscanf( line, "%*u %*u %u:%u", &maj, &min ) != 2 )
+    {
+        errno = EINVAL;
+        return -1;
+    }
+
+    *out_rdev = makedev( maj, min );
+    return 0;
+}
+
+static int nwipe_device_has_mounted_descendant( const char* candidate_devnode )
+{
+    dev_t candidate_rdev;
+    FILE* fp;
+    char line[4096];
+
+    if( nwipe_path_to_rdev( candidate_devnode, &candidate_rdev ) != 0 )
+    {
+        return 0;
+    }
+
+    fp = fopen( "/proc/self/mountinfo", "r" );
+    if( fp == NULL )
+    {
+        return 0;
+    }
+
+    while( fgets( line, sizeof( line ), fp ) != NULL )
+    {
+        dev_t mounted_rdev;
+
+        if( nwipe_mountinfo_line_to_rdev( line, &mounted_rdev ) != 0 )
+        {
+            continue;
+        }
+
+        if( nwipe_sysfs_device_depends_on( mounted_rdev, candidate_rdev, 0 ) )
+        {
+            fclose( fp );
+            return 1;
+        }
+    }
+
+    fclose( fp );
     return 0;
 }
 
@@ -186,6 +418,160 @@ static int nwipe_is_excluded_device( const char* candidate_devnode )
     }
 
     return 0;
+}
+
+/* Helper function for ATA Secure Erase, run ONCE per device */
+static int nwipe_device_ata_se_setup( nwipe_context_t* c )
+{
+    c->secure_erase_context = NULL;
+
+    nwipe_se_ata_ctx* se_ata = malloc( sizeof( nwipe_se_ata_ctx ) );
+    if( !se_ata )
+    {
+        nwipe_perror( errno, __FUNCTION__, "malloc" );
+        nwipe_log(
+            NWIPE_LOG_ERROR, "%s: %s: Failed to allocate context for ATA Sanitize", __FUNCTION__, c->device_name );
+        return -1;
+    }
+
+    if( nwipe_se_ata_init( c->device_name, se_ata ) != 0 )
+    {
+        nwipe_log( NWIPE_LOG_ERROR, "%s: %s: Failed to initialise ATA Sanitize context", __FUNCTION__, c->device_name );
+        free( se_ata );
+        return -1;
+    }
+
+    if( nwipe_se_ata_open( se_ata ) != 0 )
+    {
+        nwipe_log( NWIPE_LOG_ERROR,
+                   "%s: %s: Failed to open ATA device for Sanitize capability query",
+                   __FUNCTION__,
+                   c->device_name );
+        nwipe_se_ata_destroy( se_ata );
+        free( se_ata );
+        return -1;
+    }
+
+    if( nwipe_se_ata_sancap( se_ata ) != 0 || !se_ata->cap_caps_valid )
+    {
+        nwipe_log( NWIPE_LOG_ERROR, "%s: %s: Failed to query ATA Sanitize capabilities", __FUNCTION__, c->device_name );
+        nwipe_se_ata_close( se_ata );
+        nwipe_se_ata_destroy( se_ata );
+        free( se_ata );
+        return -1;
+    }
+
+    nwipe_log( NWIPE_LOG_INFO,
+               "%s: ATA Sanitize capabilities: sanitize=%d block_erase=%d crypto_scramble=%d overwrite=%d",
+               c->device_name,
+               se_ata->cap_sanitize,
+               se_ata->cap_block_erase,
+               se_ata->cap_crypto_erase,
+               se_ata->cap_overwrite );
+
+    nwipe_se_ata_close( se_ata );
+
+    if( se_ata->cap_sanitize )
+    {
+        c->secure_erase_supported = 1;
+        c->secure_erase_context = se_ata;
+        c->secure_erase_type = NWIPE_SECURE_ERASE_TYPE_ATA;
+        return 0;
+    }
+
+    c->secure_erase_supported = 0;
+    nwipe_log( NWIPE_LOG_INFO, "%s: ATA Sanitize feature set not supported", c->device_name );
+    nwipe_se_ata_destroy( se_ata );
+    free( se_ata );
+    return -1;
+}
+
+/* Helper function for NVMe Secure Erase, run ONCE per device */
+static int nwipe_device_nvme_se_setup( nwipe_context_t* c )
+{
+    c->secure_erase_context = NULL;
+#ifdef HAVE_LIBNVME
+    /* Lazy init on first encountered NVMe device (expensive operation) */
+    if( !nvme_topo_ready )
+    {
+        if( nwipe_se_nvme_topo_init( &nvme_topo ) != 0 )
+        {
+            nwipe_log( NWIPE_LOG_ERROR, "%s: NVMe topology scan failed: NVMe Sanitize unavailable", __FUNCTION__ );
+            return -1;
+        }
+        nvme_topo_ready = 1;
+    }
+
+    nwipe_se_nvme_ctx* se_nvme = malloc( sizeof( nwipe_se_nvme_ctx ) );
+    if( !se_nvme )
+    {
+        nwipe_perror( errno, __FUNCTION__, "malloc" );
+        nwipe_log(
+            NWIPE_LOG_ERROR, "%s: %s: Failed to allocate context for NVMe Sanitize", __FUNCTION__, c->device_name );
+        return -1;
+    }
+
+    if( nwipe_se_nvme_init( c->device_name, se_nvme, &nvme_topo ) != 0 )
+    {
+        nwipe_log(
+            NWIPE_LOG_ERROR, "%s: %s: Failed to initialise NVMe Sanitize context", __FUNCTION__, c->device_name );
+        free( se_nvme );
+        return -1;
+    }
+
+    if( nwipe_se_nvme_open( se_nvme ) != 0 )
+    {
+        nwipe_log( NWIPE_LOG_ERROR,
+                   "%s: %s: Failed to open NVMe controller for Sanitize capability query",
+                   __FUNCTION__,
+                   c->device_name );
+        nwipe_se_nvme_destroy( se_nvme );
+        free( se_nvme );
+        return -1;
+    }
+
+    nwipe_log( NWIPE_LOG_INFO,
+               "NVMe namespace '%s' belongs to NVMe controller '%s' (ns_count=%d)",
+               c->device_name,
+               se_nvme->ctrl_path,
+               se_nvme->ns_count );
+
+    if( nwipe_se_nvme_sancap( se_nvme ) != 0 || !se_nvme->cap_caps_valid )
+    {
+        nwipe_log(
+            NWIPE_LOG_ERROR, "%s: %s: Failed to query NVMe Sanitize capabilities", __FUNCTION__, c->device_name );
+        nwipe_se_nvme_close( se_nvme );
+        nwipe_se_nvme_destroy( se_nvme );
+        free( se_nvme );
+        return -1;
+    }
+
+    nwipe_log( NWIPE_LOG_INFO,
+               "%s: NVMe Sanitize capabilities: block_erase=%d crypto_erase=%d overwrite=%d",
+               c->device_name,
+               se_nvme->cap_block_erase,
+               se_nvme->cap_crypto_erase,
+               se_nvme->cap_overwrite );
+
+    nwipe_se_nvme_close( se_nvme );
+
+    if( se_nvme->cap_block_erase || se_nvme->cap_crypto_erase || se_nvme->cap_overwrite )
+    {
+        c->secure_erase_supported = 1;
+        c->secure_erase_context = se_nvme;
+        c->secure_erase_type = NWIPE_SECURE_ERASE_TYPE_NVME;
+        return 0;
+    }
+
+    c->secure_erase_supported = 0;
+    nwipe_log( NWIPE_LOG_INFO, "%s: NVMe controller reports no sanitize methods supported", c->device_name );
+    nwipe_se_nvme_destroy( se_nvme );
+    free( se_nvme );
+    return -1;
+#else
+    nwipe_log( NWIPE_LOG_WARNING, "Nwipe not compiled with libnvme: NVMe Sanitize unavailable" );
+    return -1; /* NO-OP */
+#endif /* HAVE_LIBNVME */
 }
 
 extern int terminate_signal;
@@ -338,11 +724,12 @@ int check_device( nwipe_context_t*** c, PedDevice* dev, int dcount )
     memset( next_device, 0, sizeof( nwipe_context_t ) );
 
     /*
-     * Get device busy state (possibly mounted or otherwise in use)
-     * If libparted says device is safe to partition, it's safe to wipe.
-     * So for our disk wiping purposes it should be an equally good metric.
+     * Get device busy state (possibly mounted or otherwise in use).
+     * libparted only reports the queried device. The mountinfo/sysfs check also
+     * catches mounted partitions, dm-crypt, LVM, MD, and other block devices
+     * that depend on this device.
      */
-    next_device->device_busy = ped_device_is_busy( dev );
+    next_device->device_busy = ped_device_is_busy( dev ) || nwipe_device_has_mounted_descendant( dev->path );
 
     /* Get device information */
     next_device->device_model = dev->model;
@@ -604,11 +991,32 @@ int check_device( nwipe_context_t*** c, PedDevice* dev, int dcount )
     if( get_device_uuid( next_device->device_name, uuid ) == 0 )
     {
         strncpy( next_device->device_UUID, uuid, UUID_SIZE );
-        nwipe_log( NWIPE_LOG_INFO, "UUID for %s is: %s\n", next_device->device_name, next_device->device_UUID );
+        nwipe_log( NWIPE_LOG_INFO, "UUID for %s is: %s", next_device->device_name, next_device->device_UUID );
     }
     else
     {
-        nwipe_log( NWIPE_LOG_INFO, "No UUID available for %s\n", next_device->device_name );
+        nwipe_log( NWIPE_LOG_INFO, "No UUID available for %s", next_device->device_name );
+    }
+
+    /***********************************************
+     * Secure Erase: initialise context and detect capabilities
+     * Setup helpers are self-contained (internally log as required)
+     */
+    next_device->secure_erase_supported = -1;
+    switch( next_device->device_type )
+    {
+        case NWIPE_DEVICE_ATA:
+        case NWIPE_DEVICE_USB:
+        case NWIPE_DEVICE_IDE:
+        case NWIPE_DEVICE_SCSI:
+            nwipe_device_ata_se_setup( next_device );
+            break;
+        case NWIPE_DEVICE_NVME:
+            nwipe_device_nvme_se_setup( next_device );
+            break;
+        default:
+            next_device->secure_erase_supported = -2;
+            break;
     }
 
     /* print an empty line to separate the drives in the log */

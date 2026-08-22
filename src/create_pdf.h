@@ -40,6 +40,10 @@
 #define LEFT_MARGIN_TEXT 60
 #define LEFT_MARGIN_SMART_DATA 50
 
+#define INTENTIONALLY_BLANK_X 150
+#define INTENTIONALLY_BLANK_Y 400
+#define INTENTIONALLY_BLANK_TEXT_SIZE 18
+
 #define TOP_OF_TEXT_WINDOW_Y 630
 #define START_OF_SMART_DATA_TEXT_Y_MULTIDISC 608
 
@@ -64,6 +68,15 @@
 int create_single_disc_pdf( nwipe_thread_data_ptr_t*, nwipe_context_t* ptr );
 
 int nwipe_get_smart_data( nwipe_misc_thread_data_t*, size_t, size_t*, nwipe_context_t* );
+
+/**
+ * Create the disk speed profile page for both single disc and multi disk system PDF certificates
+ * @param pointer nwipe_misc_thread_data_t
+ * @param size_t PDF type PDF_TYPE_SINGLE_DISC PDF_TYPE_MULTI_DISC
+ * @param size_t* pointer to page number
+ * @param pointer drive context
+ */
+size_t create_pdf_speed_profile_page( nwipe_misc_thread_data_t*, size_t, size_t*, nwipe_context_t* c );
 
 void pdf_header_footer_text( nwipe_misc_thread_data_t*, nwipe_context_t*, char*, size_t, size_t );
 
@@ -146,5 +159,61 @@ void pdf_add_text_host_info_page( void*,
                                   size_t,
                                   nwipe_context_t* c,
                                   nwipe_misc_thread_data_t* d );
+/**
+ * Insert an intenionally blank page for duplex printing
+ * @param pointer to PDF document
+ * @param pointer to page number
+ * @param text xoffset
+ * @param text yoffset
+ * @param PDF type, PDF_TYPE_SINGLE_DISC or PDF_TYPE_MULTI_DISC
+ * @param pointer to drive context structure
+ * @param pointer to miscellaneous data structure
+ * @return
+ */
+void pdf_add_blank_page( void*, size_t*, float, float, size_t, nwipe_context_t* c, nwipe_misc_thread_data_t* d );
+
+/**
+ * Insert page n of n on a given page
+ * @param pointer to a page
+ * @param size_t page number
+ * @param size_t total pages
+ */
+void pdf_add_footer_page_numbers( void*, size_t, size_t );
+
+/**
+ * Checks for a custom nwipe logo in /etc/nwipe/ with various extensions.
+ * @param out_len Pointer to a size_t where the file length will be stored.
+ * @return Pointer to the allocated image buffer on success, or NULL on failure.
+ * NOTE: The caller is responsible for calling free() on the returned pointer.
+ */
+unsigned char* check_and_load_logo( size_t* out_len );
+
+/**
+ * Generates a stylized dual-line graph on an existing PDF document page with peak annotations,
+ * an overall duration average line, and an expanded left margin padding for clean axis label layout.
+ * @param pointer to the PDF document
+ * @param pointer to the PDF page
+ * @param float array of minimum speed values
+ * @param float array of maximum speed values
+ * @param int the number of elements in each array (400 for portrait)
+ * @param char* title text label
+ * @param char* x_label text label
+ * @param char* y_axis text label
+ * @param float x_scale_max
+ */
+int generate_graph_pdf( float plot_y_start,
+                        const float* min_values,
+                        const float* max_values,
+                        int data_count,
+                        const char* title,
+                        const char* x_label,
+                        const char* y_label,
+                        float x_scale_max );
+
+/**
+ * Returns the method label with the direction appended.
+ * Note: The caller is responsible for freeing the returned string.
+ */
+char* nwipe_method_label_with_direction( void );
 
 #endif /* CREATE_PDF_H_ */

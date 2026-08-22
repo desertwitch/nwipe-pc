@@ -37,6 +37,8 @@
  * NOTE: The nwipe_runmethod function appends a user selectable final blanking (zero) pass to all methods.
  *
  */
+// #define _POSIX_C_SOURCE 199309L
+#define _GNU_SOURCE
 
 #include <stdint.h>
 
@@ -49,8 +51,9 @@
 #include "logging.h"
 #include "round_size.h"
 #include <errno.h>
-#include <unistd.h>
 #include <sys/syscall.h> /* SYS_getrandom */
+#include <unistd.h>
+#include <time.h>
 #if defined( __linux__ )
 /* On glibc/musl with <sys/random.h> available, it's fine (optional). */
 /* #include <sys/random.h> */
@@ -195,8 +198,11 @@ void* nwipe_zero( void* ptr )
     nwipe_context_t* c;
     c = (nwipe_context_t*) ptr;
 
-    /* get current time at the start of the wipe  */
+    /* get current time at the start of the wipe in seconds since epoch  */
     time( &c->start_time );
+
+    /* get the current time (high resolution, nanosecond or millsecond) */
+    clock_gettime( CLOCK_MONOTONIC, &c->start_clock );
 
     /* set wipe in progress flag for GUI */
     c->wipe_status = 1;
@@ -216,6 +222,30 @@ void* nwipe_zero( void* ptr )
     /* get current time at the end of the wipe  */
     time( &c->end_time );
 
+    /* ----------------------------------------------- */
+    /* get current time at the end of the wipe (high resolution) nanosecond/millsecond
+     */
+    clock_gettime( CLOCK_MONOTONIC, &c->end_clock );
+    c->duration = c->end_time - c->start_time;  // Legacy integer fallback
+
+    // Calculate precision duration in seconds
+    double secs = (double) ( c->end_clock.tv_sec - c->start_clock.tv_sec );
+    double nsecs = (double) ( c->end_clock.tv_nsec - c->start_clock.tv_nsec ) / 1000000000.0;
+    c->exact_duration = secs + nsecs;
+
+    // Calculate real high-speed throughput instantly
+    if( c->exact_duration > 0.0 )
+    {
+        c->throughput = (double) c->round_done / c->exact_duration;
+    }
+    else
+    {
+        // Absolute microsecond safety floor (e.g., 1 microsecond) to prevent division by zero
+        c->throughput = (double) c->round_done / 0.000001;
+    }
+
+    /* --------------------------------------------------------------- */
+
     return NULL;
 } /* nwipe_zero */
 
@@ -228,8 +258,11 @@ void* nwipe_one( void* ptr )
     nwipe_context_t* c;
     c = (nwipe_context_t*) ptr;
 
-    /* get current time at the start of the wipe  */
+    /* get current time at the start of the wipe in seconds since epoch  */
     time( &c->start_time );
+
+    /* get the current time (high resolution, nanosecond or millsecond) */
+    clock_gettime( CLOCK_MONOTONIC, &c->start_clock );
 
     /* set wipe in progress flag for GUI */
     c->wipe_status = 1;
@@ -249,6 +282,31 @@ void* nwipe_one( void* ptr )
     /* get current time at the end of the wipe  */
     time( &c->end_time );
 
+    /* ----------------------------------------------- */
+    /* get current time at the end of the wipe (high resolution) nanosecond/millsecond
+     */
+    clock_gettime( CLOCK_MONOTONIC, &c->end_clock );
+    c->duration = c->end_time - c->start_time;  // Legacy integer fallback
+
+    // Calculate precision duration in seconds
+    double secs = (double) ( c->end_clock.tv_sec - c->start_clock.tv_sec );
+    double nsecs = (double) ( c->end_clock.tv_nsec - c->start_clock.tv_nsec ) / 1000000000.0;
+    c->exact_duration = secs + nsecs;
+
+    // Calculate real high-speed throughput instantly
+    if( c->exact_duration > 0.0 )
+    {
+        // c->throughput = (double)c->bytes_erased / c->exact_duration;
+        c->throughput = (double) c->round_done / c->exact_duration;
+    }
+    else
+    {
+        // Absolute microsecond safety floor (e.g., 1 microsecond) to prevent division by zero
+        c->throughput = (double) c->round_done / 0.000001;
+    }
+
+    /* --------------------------------------------------------------- */
+
     return NULL;
 } /* nwipe_one */
 
@@ -261,8 +319,11 @@ void* nwipe_verify_zero( void* ptr )
     nwipe_context_t* c;
     c = (nwipe_context_t*) ptr;
 
-    /* get current time at the start of the wipe  */
+    /* get current time at the start of the wipe in seconds since epoch  */
     time( &c->start_time );
+
+    /* get the current time (high resolution, nanosecond or millsecond) */
+    clock_gettime( CLOCK_MONOTONIC, &c->start_clock );
 
     /* set wipe in progress flag for GUI */
     c->wipe_status = 1;
@@ -278,6 +339,30 @@ void* nwipe_verify_zero( void* ptr )
 
     /* get current time at the end of the wipe  */
     time( &c->end_time );
+
+    /* ----------------------------------------------- */
+    /* get current time at the end of the wipe (high resolution) nanosecond/millsecond
+     */
+    clock_gettime( CLOCK_MONOTONIC, &c->end_clock );
+    c->duration = c->end_time - c->start_time;  // Legacy integer fallback
+
+    // Calculate precision duration in seconds
+    double secs = (double) ( c->end_clock.tv_sec - c->start_clock.tv_sec );
+    double nsecs = (double) ( c->end_clock.tv_nsec - c->start_clock.tv_nsec ) / 1000000000.0;
+    c->exact_duration = secs + nsecs;
+
+    // Calculate real high-speed throughput instantly
+    if( c->exact_duration > 0.0 )
+    {
+        c->throughput = (double) c->round_done / c->exact_duration;
+    }
+    else
+    {
+        // Absolute microsecond safety floor (e.g., 1 microsecond) to prevent division by zero
+        c->throughput = (double) c->round_done / 0.000001;
+    }
+
+    /* --------------------------------------------------------------- */
 
     return NULL;
 } /* nwipe_verify zeros */
@@ -291,8 +376,11 @@ void* nwipe_verify_one( void* ptr )
     nwipe_context_t* c;
     c = (nwipe_context_t*) ptr;
 
-    /* get current time at the start of the wipe  */
+    /* get current time at the start of the wipe in seconds since epoch  */
     time( &c->start_time );
+
+    /* get the current time (high resolution, nanosecond or millsecond) */
+    clock_gettime( CLOCK_MONOTONIC, &c->start_clock );
 
     /* set wipe in progress flag for GUI */
     c->wipe_status = 1;
@@ -308,6 +396,30 @@ void* nwipe_verify_one( void* ptr )
 
     /* get current time at the end of the wipe  */
     time( &c->end_time );
+
+    /* ----------------------------------------------- */
+    /* get current time at the end of the wipe (high resolution) nanosecond/millsecond
+     */
+    clock_gettime( CLOCK_MONOTONIC, &c->end_clock );
+    c->duration = c->end_time - c->start_time;  // Legacy integer fallback
+
+    // Calculate precision duration in seconds
+    double secs = (double) ( c->end_clock.tv_sec - c->start_clock.tv_sec );
+    double nsecs = (double) ( c->end_clock.tv_nsec - c->start_clock.tv_nsec ) / 1000000000.0;
+    c->exact_duration = secs + nsecs;
+
+    // Calculate real high-speed throughput instantly
+    if( c->exact_duration > 0.0 )
+    {
+        c->throughput = (double) c->round_done / c->exact_duration;
+    }
+    else
+    {
+        // Absolute microsecond safety floor (e.g., 1 microsecond) to prevent division by zero
+        c->throughput = (double) c->round_done / 0.000001;
+    }
+
+    /* --------------------------------------------------------------- */
 
     return NULL;
 } /* nwipe_verify */
@@ -322,8 +434,11 @@ void* nwipe_dod522022m( void* ptr )
     nwipe_context_t* c;
     c = (nwipe_context_t*) ptr;
 
-    /* get current time at the start of the wipe  */
+    /* get current time at the start of the wipe in seconds since epoch  */
     time( &c->start_time );
+
+    /* get the current time (high resolution, nanosecond or millsecond) */
+    clock_gettime( CLOCK_MONOTONIC, &c->start_clock );
 
     /* set wipe in progress flag for GUI */
     c->wipe_status = 1;
@@ -383,6 +498,30 @@ void* nwipe_dod522022m( void* ptr )
     /* get current time at the end of the wipe  */
     time( &c->end_time );
 
+    /* ----------------------------------------------- */
+    /* get current time at the end of the wipe (high resolution) nanosecond/millsecond
+     */
+    clock_gettime( CLOCK_MONOTONIC, &c->end_clock );
+    c->duration = c->end_time - c->start_time;  // Legacy integer fallback
+
+    // Calculate precision duration in seconds
+    double secs = (double) ( c->end_clock.tv_sec - c->start_clock.tv_sec );
+    double nsecs = (double) ( c->end_clock.tv_nsec - c->start_clock.tv_nsec ) / 1000000000.0;
+    c->exact_duration = secs + nsecs;
+
+    // Calculate real high-speed throughput instantly
+    if( c->exact_duration > 0.0 )
+    {
+        c->throughput = (double) c->round_done / c->exact_duration;
+    }
+    else
+    {
+        // Absolute microsecond safety floor (e.g., 1 microsecond) to prevent division by zero
+        c->throughput = (double) c->round_done / 0.000001;
+    }
+
+    /* --------------------------------------------------------------- */
+
     return NULL;
 } /* nwipe_dod522022m */
 
@@ -397,8 +536,11 @@ void* nwipe_dodshort( void* ptr )
     nwipe_context_t* c;
     c = (nwipe_context_t*) ptr;
 
-    /* get current time at the start of the wipe  */
+    /* get current time at the start of the wipe in seconds since epoch  */
     time( &c->start_time );
+
+    /* get the current time (high resolution, nanosecond or millsecond) */
+    clock_gettime( CLOCK_MONOTONIC, &c->start_clock );
 
     /* set wipe in progress flag for GUI */
     c->wipe_status = 1;
@@ -451,6 +593,30 @@ void* nwipe_dodshort( void* ptr )
     /* get current time at the end of the wipe  */
     time( &c->end_time );
 
+    /* ----------------------------------------------- */
+    /* get current time at the end of the wipe (high resolution) nanosecond/millsecond
+     */
+    clock_gettime( CLOCK_MONOTONIC, &c->end_clock );
+    c->duration = c->end_time - c->start_time;  // Legacy integer fallback
+
+    // Calculate precision duration in seconds
+    double secs = (double) ( c->end_clock.tv_sec - c->start_clock.tv_sec );
+    double nsecs = (double) ( c->end_clock.tv_nsec - c->start_clock.tv_nsec ) / 1000000000.0;
+    c->exact_duration = secs + nsecs;
+
+    // Calculate real high-speed throughput instantly
+    if( c->exact_duration > 0.0 )
+    {
+        c->throughput = (double) c->round_done / c->exact_duration;
+    }
+    else
+    {
+        // Absolute microsecond safety floor (e.g., 1 microsecond) to prevent division by zero
+        c->throughput = (double) c->round_done / 0.000001;
+    }
+
+    /* --------------------------------------------------------------- */
+
     return NULL;
 } /* nwipe_dodshort */
 
@@ -464,8 +630,11 @@ void* nwipe_gutmann( void* ptr )
     nwipe_context_t* c;
     c = (nwipe_context_t*) ptr;
 
-    /* get current time at the start of the wipe  */
+    /* get current time at the start of the wipe in seconds since epoch  */
     time( &c->start_time );
+
+    /* get the current time (high resolution, nanosecond or millsecond) */
+    clock_gettime( CLOCK_MONOTONIC, &c->start_clock );
 
     /* set wipe in progress flag for GUI */
     c->wipe_status = 1;
@@ -586,6 +755,30 @@ void* nwipe_gutmann( void* ptr )
     /* get current time at the end of the wipe  */
     time( &c->end_time );
 
+    /* ----------------------------------------------- */
+    /* get current time at the end of the wipe (high resolution) nanosecond/millsecond
+     */
+    clock_gettime( CLOCK_MONOTONIC, &c->end_clock );
+    c->duration = c->end_time - c->start_time;  // Legacy integer fallback
+
+    // Calculate precision duration in seconds
+    double secs = (double) ( c->end_clock.tv_sec - c->start_clock.tv_sec );
+    double nsecs = (double) ( c->end_clock.tv_nsec - c->start_clock.tv_nsec ) / 1000000000.0;
+    c->exact_duration = secs + nsecs;
+
+    // Calculate real high-speed throughput instantly
+    if( c->exact_duration > 0.0 )
+    {
+        c->throughput = (double) c->round_done / c->exact_duration;
+    }
+    else
+    {
+        // Absolute microsecond safety floor (e.g., 1 microsecond) to prevent division by zero
+        c->throughput = (double) c->round_done / 0.000001;
+    }
+
+    /* --------------------------------------------------------------- */
+
     return NULL;
 } /* nwipe_gutmann */
 
@@ -603,8 +796,11 @@ void* nwipe_ops2( void* ptr )
     nwipe_context_t* c;
     c = (nwipe_context_t*) ptr;
 
-    /* get current time at the start of the wipe  */
+    /* get current time at the start of the wipe in seconds since epoch  */
     time( &c->start_time );
+
+    /* get the current time (high resolution, nanosecond or millsecond) */
+    clock_gettime( CLOCK_MONOTONIC, &c->start_clock );
 
     /* set wipe in progress flag for GUI */
     c->wipe_status = 1;
@@ -754,6 +950,30 @@ void* nwipe_ops2( void* ptr )
     /* get current time at the end of the wipe  */
     time( &c->end_time );
 
+    /* ----------------------------------------------- */
+    /* get current time at the end of the wipe (high resolution) nanosecond/millsecond
+     */
+    clock_gettime( CLOCK_MONOTONIC, &c->end_clock );
+    c->duration = c->end_time - c->start_time;  // Legacy integer fallback
+
+    // Calculate precision duration in seconds
+    double secs = (double) ( c->end_clock.tv_sec - c->start_clock.tv_sec );
+    double nsecs = (double) ( c->end_clock.tv_nsec - c->start_clock.tv_nsec ) / 1000000000.0;
+    c->exact_duration = secs + nsecs;
+
+    // Calculate real high-speed throughput instantly
+    if( c->exact_duration > 0.0 )
+    {
+        c->throughput = (double) c->round_done / c->exact_duration;
+    }
+    else
+    {
+        // Absolute microsecond safety floor (e.g., 1 microsecond) to prevent division by zero
+        c->throughput = (double) c->round_done / 0.000001;
+    }
+
+    /* --------------------------------------------------------------- */
+
     return NULL;
 } /* nwipe_ops2 */
 
@@ -761,8 +981,11 @@ void* nwipe_is5enh( void* ptr )
 {
     nwipe_context_t* c = (nwipe_context_t*) ptr;
 
-    /* get current time at the start of the wipe  */
+    /* get current time at the start of the wipe in seconds since epoch  */
     time( &c->start_time );
+
+    /* get the current time (high resolution, nanosecond or millsecond) */
+    clock_gettime( CLOCK_MONOTONIC, &c->start_clock );
 
     c->wipe_status = 1;
 
@@ -778,6 +1001,30 @@ void* nwipe_is5enh( void* ptr )
     /* get current time at the end of the wipe  */
     time( &c->end_time );
 
+    /* ----------------------------------------------- */
+    /* get current time at the end of the wipe (high resolution) nanosecond/millsecond
+     */
+    clock_gettime( CLOCK_MONOTONIC, &c->end_clock );
+    c->duration = c->end_time - c->start_time;  // Legacy integer fallback
+
+    // Calculate precision duration in seconds
+    double secs = (double) ( c->end_clock.tv_sec - c->start_clock.tv_sec );
+    double nsecs = (double) ( c->end_clock.tv_nsec - c->start_clock.tv_nsec ) / 1000000000.0;
+    c->exact_duration = secs + nsecs;
+
+    // Calculate real high-speed throughput instantly
+    if( c->exact_duration > 0.0 )
+    {
+        c->throughput = (double) c->round_done / c->exact_duration;
+    }
+    else
+    {
+        // Absolute microsecond safety floor (e.g., 1 microsecond) to prevent division by zero
+        c->throughput = (double) c->round_done / 0.000001;
+    }
+
+    /* --------------------------------------------------------------- */
+
     return NULL;
 } /* nwipe_is5enh */
 
@@ -791,8 +1038,11 @@ void* nwipe_random( void* ptr )
     nwipe_context_t* c;
     c = (nwipe_context_t*) ptr;
 
-    /* get current time at the start of the wipe  */
+    /* get current time at the start of the wipe in seconds since epoch  */
     time( &c->start_time );
+
+    /* get the current time (high resolution, nanosecond or millsecond) */
+    clock_gettime( CLOCK_MONOTONIC, &c->start_clock );
 
     /* set wipe in progress flag for GUI */
     c->wipe_status = 1;
@@ -809,6 +1059,30 @@ void* nwipe_random( void* ptr )
     /* get current time at the end of the wipe  */
     time( &c->end_time );
 
+    /* ----------------------------------------------- */
+    /* get current time at the end of the wipe (high resolution) nanosecond/millsecond
+     */
+    clock_gettime( CLOCK_MONOTONIC, &c->end_clock );
+    c->duration = c->end_time - c->start_time;  // Legacy integer fallback
+
+    // Calculate precision duration in seconds
+    double secs = (double) ( c->end_clock.tv_sec - c->start_clock.tv_sec );
+    double nsecs = (double) ( c->end_clock.tv_nsec - c->start_clock.tv_nsec ) / 1000000000.0;
+    c->exact_duration = secs + nsecs;
+
+    // Calculate real high-speed throughput instantly
+    if( c->exact_duration > 0.0 )
+    {
+        c->throughput = (double) c->round_done / c->exact_duration;
+    }
+    else
+    {
+        // Absolute microsecond safety floor (e.g., 1 microsecond) to prevent division by zero
+        c->throughput = (double) c->round_done / 0.000001;
+    }
+
+    /* --------------------------------------------------------------- */
+
     return NULL;
 } /* nwipe_random */
 
@@ -824,8 +1098,11 @@ void* nwipe_bruce7( void* ptr )
 
     nwipe_context_t* c = (nwipe_context_t*) ptr;
 
-    /* Get current time at the start of the wipe */
+    /* get current time at the start of the wipe in seconds since epoch  */
     time( &c->start_time );
+
+    /* get the current time (high resolution, nanosecond or millsecond) */
+    clock_gettime( CLOCK_MONOTONIC, &c->start_clock );
 
     /* Set wipe in progress flag for GUI */
     c->wipe_status = 1;
@@ -853,6 +1130,30 @@ void* nwipe_bruce7( void* ptr )
     /* Get current time at the end of the wipe */
     time( &c->end_time );
 
+    /* ----------------------------------------------- */
+    /* get current time at the end of the wipe (high resolution) nanosecond/millsecond
+     */
+    clock_gettime( CLOCK_MONOTONIC, &c->end_clock );
+    c->duration = c->end_time - c->start_time;  // Legacy integer fallback
+
+    // Calculate precision duration in seconds
+    double secs = (double) ( c->end_clock.tv_sec - c->start_clock.tv_sec );
+    double nsecs = (double) ( c->end_clock.tv_nsec - c->start_clock.tv_nsec ) / 1000000000.0;
+    c->exact_duration = secs + nsecs;
+
+    // Calculate real high-speed throughput instantly
+    if( c->exact_duration > 0.0 )
+    {
+        c->throughput = (double) c->round_done / c->exact_duration;
+    }
+    else
+    {
+        // Absolute microsecond safety floor (e.g., 1 microsecond) to prevent division by zero
+        c->throughput = (double) c->round_done / 0.000001;
+    }
+
+    /* --------------------------------------------------------------- */
+
     return NULL;
 }
 
@@ -868,7 +1169,12 @@ void* nwipe_bmb( void* ptr )
 
     nwipe_context_t* c = (nwipe_context_t*) ptr;
 
+    /* get current time at the start of the wipe in seconds since epoch  */
     time( &c->start_time );
+
+    /* get the current time (high resolution, nanosecond or millsecond) */
+    clock_gettime( CLOCK_MONOTONIC, &c->start_clock );
+
     c->wipe_status = 1;
 
     char onefill[1] = { '\xFF' };
@@ -889,6 +1195,30 @@ void* nwipe_bmb( void* ptr )
     c->wipe_status = 0;
     time( &c->end_time );
 
+    /* ----------------------------------------------- */
+    /* get current time at the end of the wipe (high resolution) nanosecond/millsecond
+     */
+    clock_gettime( CLOCK_MONOTONIC, &c->end_clock );
+    c->duration = c->end_time - c->start_time;  // Legacy integer fallback
+
+    // Calculate precision duration in seconds
+    double secs = (double) ( c->end_clock.tv_sec - c->start_clock.tv_sec );
+    double nsecs = (double) ( c->end_clock.tv_nsec - c->start_clock.tv_nsec ) / 1000000000.0;
+    c->exact_duration = secs + nsecs;
+
+    // Calculate real high-speed throughput instantly
+    if( c->exact_duration > 0.0 )
+    {
+        c->throughput = (double) c->round_done / c->exact_duration;
+    }
+    else
+    {
+        // Absolute microsecond safety floor (e.g., 1 microsecond) to prevent division by zero
+        c->throughput = (double) c->round_done / 0.000001;
+    }
+
+    /* --------------------------------------------------------------- */
+
     return NULL;
 }
 
@@ -902,8 +1232,11 @@ void* nwipe_unraid( void* ptr )
     nwipe_context_t* c;
     c = (nwipe_context_t*) ptr;
 
-    /* get current time at the start of the wipe  */
+    /* get current time at the start of the wipe in seconds since epoch  */
     time( &c->start_time );
+
+    /* get the current time (high resolution, nanosecond or millsecond) */
+    clock_gettime( CLOCK_MONOTONIC, &c->start_clock );
 
     /* set wipe in progress flag for GUI */
     c->wipe_status = 1;
@@ -921,6 +1254,30 @@ void* nwipe_unraid( void* ptr )
 
     /* get current time at the end of the wipe  */
     time( &c->end_time );
+
+    /* ----------------------------------------------- */
+    /* get current time at the end of the wipe (high resolution) nanosecond/millsecond
+     */
+    clock_gettime( CLOCK_MONOTONIC, &c->end_clock );
+    c->duration = c->end_time - c->start_time;  // Legacy integer fallback
+
+    // Calculate precision duration in seconds
+    double secs = (double) ( c->end_clock.tv_sec - c->start_clock.tv_sec );
+    double nsecs = (double) ( c->end_clock.tv_nsec - c->start_clock.tv_nsec ) / 1000000000.0;
+    c->exact_duration = secs + nsecs;
+
+    // Calculate real high-speed throughput instantly
+    if( c->exact_duration > 0.0 )
+    {
+        c->throughput = (double) c->round_done / c->exact_duration;
+    }
+    else
+    {
+        // Absolute microsecond safety floor (e.g., 1 microsecond) to prevent division by zero
+        c->throughput = (double) c->round_done / 0.000001;
+    }
+
+    /* --------------------------------------------------------------- */
 
     return NULL;
 } /* nwipe_unraid */

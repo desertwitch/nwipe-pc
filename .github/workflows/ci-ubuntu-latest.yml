@@ -12,17 +12,30 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Update the system packages
+      - name: Update system packages
         run: sudo apt-get update
 
-      - name: Install the dependencies
+      - name: Install dependencies
         run: sudo apt-get install -y build-essential pkg-config automake libncurses5-dev autotools-dev libparted-dev libconfig-dev libconfig++-dev dmidecode
 
-      - name: Generate the autogen files
+      - name: Install meson build system
+        run: sudo apt-get install -y meson ninja-build libjson-c-dev
+
+      - name: Build libnvme dependency
+        run: |
+          wget https://github.com/linux-nvme/libnvme/archive/refs/tags/v1.16.1.tar.gz
+          tar xvfz v1.16.1.tar.gz
+          cd libnvme-1.16.1
+          meson setup .build
+          meson compile -C .build
+          sudo meson install -C .build
+          sudo ldconfig
+
+      - name: Generate autogen files
         run: ./autogen.sh
 
       - name: Configure the program
-        run: ./configure CFLAGS='-O1 -g -Wall -Wextra -Wno-system-headers'
-
+        run: ./configure --with-libnvme
+  
       - name: Compile the program
         run: make

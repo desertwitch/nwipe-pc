@@ -1,13 +1,20 @@
-# what flags you want to pass to the C compiler & linker
-#CFLAGS = -lncurses -lparted
 AM_CFLAGS =
+AM_CXXFLAGS =
+AM_CPPFLAGS =
 AM_LDFLAGS =
-check_PROGRAMS = test_round_size
-TESTS = test_round_size
 
-# this lists the binaries to produce, the (non-PHONY, binary) targets in
-# the previous manual Makefile
 bin_PROGRAMS = nwipe
+
+# Versioning; we use FORCE to always re-build this header.
+BUILT_SOURCES = git_hash.h
+CLEANFILES = git_hash.h
+
+git_hash.h: FORCE
+	@h="$${NWIPE_GIT_HASH-}"; \
+	test -n "$$h" || h=`test -d $(top_srcdir)/.git && cd $(top_srcdir) && git describe --always --dirty 2>/dev/null || echo unknown`; \
+	printf '#define NWIPE_GIT_HASH "%s"\n' "$$h" > $@
+
+FORCE:
 
 # Core sources
 NWIPE_CORE = \
@@ -24,6 +31,8 @@ NWIPE_CORE = \
     pass_internal.c pass_internal.h \
     pass_static.c pass_random.c pass_scatter.c pass_unraid.c \
     device.c device.h \
+    se_ata.c se_ata.h se_ata_gui.c se_ata_gui.h \
+    se_nvme.c se_nvme.h se_nvme_gui.c se_nvme_gui.h \
     hpa_dco.c hpa_dco.h \
     miscellaneous.c miscellaneous.h \
     conf.c conf.h \
@@ -50,6 +59,7 @@ NWIPE_PRNG = \
 NWIPE_PDF = \
     PDFGen/pdfgen.c PDFGen/pdfgen.h \
     create_pdf.c create_pdf.h \
+    create_pdf_graph.c \
     create_single_disc_pdf.c \
     create_system_multi_disc_pdf.c \
     embedded_images/shred_db.jpg.c embedded_images/shred_db.jpg.h \
@@ -64,7 +74,13 @@ NWIPE_HDDTEMP = \
 
 # Combine all sources
 nwipe_SOURCES = $(NWIPE_CORE) $(NWIPE_PRNG) $(NWIPE_PDF) $(NWIPE_HDDTEMP)
-nwipe_LDADD = $(PARTED_LIBS) $(LIBCONFIG)
+nwipe_CPPFLAGS = $(AM_CPPFLAGS) $(NCURSES_CFLAGS) $(PANEL_CFLAGS) \
+                 $(LIBCONFIG_CFLAGS) $(PARTED_CFLAGS) $(LIBNVME_CFLAGS)
+nwipe_LDADD    = $(PANEL_LIBS) $(NCURSES_LIBS) $(LIBCONFIG_LIBS) \
+                 $(PARTED_LIBS) $(PARTED_STATIC_LIBS) $(LIBNVME_LIBS)
 
-test_round_size_SOURCES = ../tests/unit/test_round_size.c round_size.c round_size.h
-test_round_size_CPPFLAGS = -I$(top_srcdir)/src -I$(top_builddir)
+# Combine the test suite
+check_PROGRAMS = test_round_size
+TESTS = test_round_size
+test_round_size_SOURCES = $(top_srcdir)/tests/unit/test_round_size.c round_size.c round_size.h
+test_round_size_CPPFLAGS = $(AM_CPPFLAGS) -I$(top_srcdir)/src -I$(top_builddir)
