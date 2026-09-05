@@ -26,10 +26,13 @@
 #include "logging.h"
 #include "se_nvme.h"
 #include "se_nvme_gui.h"
+#include "create_pdf.h"
+#include "miscellaneous.h"
 
 extern int terminate_signal;
 extern WINDOW* main_window;
 extern WINDOW* footer_window;
+extern nwipe_thread_data_ptr_t* global_nwipe_thread_data_ptr;
 
 #ifdef HAVE_NVME_SANITIZE_SANACT_EXIT_MEDIA_VERIF
 #define NWIPE_GUI_SE_NVME_ACTION_COUNT 5
@@ -479,9 +482,12 @@ static int nwipe_gui_se_nvme_overwrite_opts( nwipe_context_t* ctx, nwipe_se_nvme
 
 static void nwipe_gui_se_nvme_monitor( nwipe_context_t* ctx, nwipe_se_nvme_ctx* san )
 {
-    const char* ftr_progress = "ESC=Stop Monitoring";
+    const char* ftr_progress = "No keyboard actions are available";
     int user_aborted = 0;
     int method_set = 0;
+
+    /* Record start time (covers new & resumed erases) */
+    time( &ctx->start_time );
 
     werase( footer_window );
     nwipe_gui_amend_footer_window( ftr_progress, "" );
@@ -555,13 +561,14 @@ static void nwipe_gui_se_nvme_monitor( nwipe_context_t* ctx, nwipe_se_nvme_ctx* 
         if( !poll_err && san->state != NWIPE_SE_NVME_STATE_IN_PROGRESS )
             break;
 
-        /* Wait ~5s, check for ESC */
+        /* Wait ~5s, monitoring is intentionally not interruptible */
         for( int tick = 0; tick < 20 && terminate_signal != 1; tick++ )
         {
             timeout( 250 );
             keystroke = getch();
             timeout( -1 );
 
+#if 0 /* TODO: re-enable if monitoring should be interruptible */
             switch( keystroke )
             {
                 case KEY_BACKSPACE:
@@ -570,6 +577,7 @@ static void nwipe_gui_se_nvme_monitor( nwipe_context_t* ctx, nwipe_se_nvme_ctx* 
                     user_aborted = 1;
                     break;
             }
+#endif
             if( user_aborted )
                 break;
         }
@@ -613,11 +621,7 @@ static void nwipe_gui_se_nvme_monitor( nwipe_context_t* ctx, nwipe_se_nvme_ctx* 
             mvwprintw( main_window, yy++, tab1, "Action completed with success." );
             mvwprintw( main_window, yy++, tab1, "Device status: %s", result_status_str );
 
-            if( san->destructive_sanact )
-            {
-                /* We only update global secure erase state if it was a sanitize action */
-                ctx->secure_erase_status = NWIPE_SECURE_ERASE_SUCCESS; /* Global state */
-            }
+            ctx->secure_erase_status = NWIPE_SECURE_ERASE_SUCCESS;
 
             if( !logged )
             {
@@ -635,11 +639,7 @@ static void nwipe_gui_se_nvme_monitor( nwipe_context_t* ctx, nwipe_se_nvme_ctx* 
             yy++;
             mvwprintw( main_window, yy++, tab1, "Use 'Exit Failure Mode' to clear a failure state." );
 
-            if( san->destructive_sanact )
-            {
-                /* We only update global secure erase state if it was a sanitize action */
-                ctx->secure_erase_status = NWIPE_SECURE_ERASE_FAILURE; /* Global state */
-            }
+            ctx->secure_erase_status = NWIPE_SECURE_ERASE_FAILURE;
 
             if( !logged )
             {
@@ -656,11 +656,7 @@ static void nwipe_gui_se_nvme_monitor( nwipe_context_t* ctx, nwipe_se_nvme_ctx* 
             mvwprintw( main_window, yy++, tab1, "The device did not return a success or failure." );
             mvwprintw( main_window, yy++, tab1, "Device status: %s", result_status_str );
 
-            if( san->destructive_sanact )
-            {
-                /* We only update global secure erase state if it was a sanitize action */
-                ctx->secure_erase_status = NWIPE_SECURE_ERASE_SUCCESS; /* Global state */
-            }
+            ctx->secure_erase_status = NWIPE_SECURE_ERASE_SUCCESS;
 
             if( !logged )
             {
@@ -681,6 +677,9 @@ static void nwipe_gui_se_nvme_monitor( nwipe_context_t* ctx, nwipe_se_nvme_ctx* 
         nwipe_gui_title( main_window, nwipe_gui_se_nvme_title );
         wrefresh( main_window );
 
+        /* Record end time */
+        calculate_duration_string( ctx );
+
         timeout( 250 );
         keystroke = getch();
         timeout( -1 );
@@ -692,6 +691,11 @@ static void nwipe_gui_se_nvme_monitor( nwipe_context_t* ctx, nwipe_se_nvme_ctx* 
             case KEY_BACKSPACE:
             case KEY_BREAK:
             case 27: /* ESC */
+                if( san->destructive_sanact ) /* PDFs are only created for destructive methods */
+                {
+                    ctx->secure_erase_orchestration = NWIPE_SECURE_ERASE_ORCHESTRATION_STANDALONE;
+                    create_single_disc_pdf( global_nwipe_thread_data_ptr, ctx );
+                }
                 return;
         }
     } while( terminate_signal != 1 );
@@ -898,6 +902,12 @@ void nwipe_gui_se_nvme_sanitize( nwipe_context_t* ctx, nwipe_se_nvme_ctx* san )
     {
         if( nwipe_gui_se_nvme_prompt_in_progress( ctx, san ) )
         {
+            /* Reset the context status so a previous one does not leak */
+            ctx->secure_erase_status = NWIPE_SECURE_ERASE_UNKNOWN;
+
+            /* Inform the device context of the running method */
+            nwipe_gui_se_nvme_set_context_method( ctx, san->sanact );
+
             /* User wanted to monitor its progress */
             nwipe_gui_se_nvme_monitor( ctx, san );
         }
@@ -974,9 +984,6 @@ void nwipe_gui_se_nvme_sanitize( nwipe_context_t* ctx, nwipe_se_nvme_ctx* san )
         return;
     }
 
-    /* Inform the device context of the chosen method */
-    nwipe_gui_se_nvme_set_context_method( ctx, san->planned_sanact );
-
     /* Sanitize the device now */
     if( nwipe_se_nvme_sanitize( san ) != 0 )
     {
@@ -984,6 +991,12 @@ void nwipe_gui_se_nvme_sanitize( nwipe_context_t* ctx, nwipe_se_nvme_ctx* san )
         nwipe_se_nvme_close( san );
         return;
     }
+
+    /* Reset the context status so a previous one does not leak */
+    ctx->secure_erase_status = NWIPE_SECURE_ERASE_UNKNOWN;
+
+    /* Inform the device context of the chosen method */
+    nwipe_gui_se_nvme_set_context_method( ctx, san->planned_sanact );
 
     /* Monitor the results */
     nwipe_gui_se_nvme_monitor( ctx, san );

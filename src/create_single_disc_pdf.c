@@ -66,6 +66,8 @@ int create_single_disc_pdf( nwipe_thread_data_ptr_t* ptrx, nwipe_context_t* ptr 
     extern config_t nwipe_cfg;
     extern char nwipe_config_file[];
 
+    size_t idx;
+
     uint32_t text_color_size_apparent;  // local use of color
 
     //    char pdf_footer[MAX_PDF_FOOTER_TEXT_LENGTH];
@@ -76,6 +78,10 @@ int create_single_disc_pdf( nwipe_thread_data_ptr_t* ptrx, nwipe_context_t* ptr 
     char end_time_text[50] = "";
     char errors[50] = "";
     char throughput_txt[50] = "";
+    char secure_erase_method_txt[30] = "";
+
+    /* These methods should be ordered exactly as shown in nwipe_secure_erase_method_t in context.h */
+    const char* secure_erase_methods[] = { "Unknown", "Block", "Crypto", "Overwrite" };
 
     size_t page_number = 1;
 
@@ -329,20 +335,42 @@ int create_single_disc_pdf( nwipe_thread_data_ptr_t* ptrx, nwipe_context_t* ptr 
     /********
      * Method
      */
-    char* p_nwipe_method_label_with_direction = 0;
-    p_nwipe_method_label_with_direction = nwipe_method_label_with_direction();
     pdf_add_text( pdf, NULL, "Method:", 12, 60, 270, PDF_GRAY );
     pdf_set_font( pdf, "Helvetica-Bold" );
-    pdf_add_text( pdf, NULL, p_nwipe_method_label_with_direction, text_size_data, 110, 270, PDF_BLACK );
+    idx = 0;
+    if( c->secure_erase_orchestration == NWIPE_SECURE_ERASE_ORCHESTRATION_STANDALONE )
+    {
+        /* Standalone Secure Erase Only */
+        snprintf( secure_erase_method_txt,
+                  sizeof( secure_erase_method_txt ),
+                  "Secure Erase (%s)",
+                  secure_erase_methods[c->secure_erase_method] );
+        pdf_add_text( pdf, NULL, secure_erase_method_txt, text_size_data, 110, 270, PDF_BLACK );
+    }
+    else
+    {
+        /* Traditional methods */
+        char* p_nwipe_method_label_with_direction = 0;
+        p_nwipe_method_label_with_direction = nwipe_method_label_with_direction();
+        pdf_add_text( pdf, NULL, p_nwipe_method_label_with_direction, text_size_data, 110, 270, PDF_BLACK );
+        free( p_nwipe_method_label_with_direction );  // free string
+        p_nwipe_method_label_with_direction = NULL;  // get rid of dangling pointer
+    }
     pdf_set_font( pdf, "Helvetica" );
-    free( p_nwipe_method_label_with_direction );  // free string
-    p_nwipe_method_label_with_direction = NULL;  // get rid of dangling pointer
+
     /***********
      * prng type
      */
     pdf_add_text( pdf, NULL, "PRNG algorithm:", 12, 300, 270, PDF_GRAY );
     pdf_set_font( pdf, "Helvetica-Bold" );
-    pdf_add_text_prng_type( 395, 270, PDF_BLACK );
+    if( c->secure_erase_orchestration == NWIPE_SECURE_ERASE_ORCHESTRATION_STANDALONE )
+    {
+        pdf_add_text_prng_type( NWIPE_PDF_FORCE_NOT_APPLICABLE_OUTPUT, 395, 270, PDF_BLACK );
+    }
+    else
+    {
+        pdf_add_text_prng_type( NWIPE_PDF_FORCE_OUTPUT_RESULT, 395, 270, PDF_BLACK );
+    }
     pdf_set_font( pdf, "Helvetica" );
 
     /******************************************************
@@ -350,7 +378,14 @@ int create_single_disc_pdf( nwipe_thread_data_ptr_t* ptrx, nwipe_context_t* ptr 
      */
     pdf_add_text( pdf, NULL, "Final Pass(Zeros/Ones/None):", 12, 60, 250, PDF_GRAY );
     pdf_set_font( pdf, "Helvetica-Bold" );
-    pdf_add_text_blanking( text_size_data, 230, 250 );
+    if( c->secure_erase_orchestration == NWIPE_SECURE_ERASE_ORCHESTRATION_STANDALONE )
+    {
+        pdf_add_text_blanking( NWIPE_PDF_FORCE_NOT_APPLICABLE_OUTPUT, text_size_data, 230, 250 );
+    }
+    else
+    {
+        pdf_add_text_blanking( NWIPE_PDF_FORCE_OUTPUT_RESULT, text_size_data, 230, 250 );
+    }
     pdf_set_font( pdf, "Helvetica" );
 
     /* ***********************************************************************
@@ -358,7 +393,14 @@ int create_single_disc_pdf( nwipe_thread_data_ptr_t* ptrx, nwipe_context_t* ptr 
      */
     pdf_add_text( pdf, NULL, "Verify Pass(Last/All/None):", 12, 300, 250, PDF_GRAY );
     pdf_set_font( pdf, "Helvetica-Bold" );
-    pdf_add_text_verify( text_size_data, 450, 250 );
+    if( c->secure_erase_orchestration == NWIPE_SECURE_ERASE_ORCHESTRATION_STANDALONE )
+    {
+        pdf_add_text_verify( NWIPE_PDF_FORCE_NOT_APPLICABLE_OUTPUT, text_size_data, 450, 250 );
+    }
+    else
+    {
+        pdf_add_text_verify( NWIPE_PDF_FORCE_OUTPUT_RESULT, text_size_data, 450, 250 );
+    }
     pdf_set_font( pdf, "Helvetica" );
 
     /* ************
@@ -403,7 +445,14 @@ int create_single_disc_pdf( nwipe_thread_data_ptr_t* ptrx, nwipe_context_t* ptr 
     pdf_add_text( pdf, NULL, "Throughput:", 12, 300, 190, PDF_GRAY );
     snprintf( throughput_txt, sizeof( throughput_txt ), "%s/sec", c->throughput_txt );
     pdf_set_font( pdf, "Helvetica-Bold" );
-    pdf_add_text( pdf, NULL, throughput_txt, text_size_data, 385, 190, PDF_BLACK );
+    if( c->secure_erase_orchestration == NWIPE_SECURE_ERASE_ORCHESTRATION_STANDALONE )
+    {
+        pdf_add_text( pdf, NULL, "N/A for Secure erase", text_size_data, 385, 190, PDF_BLACK );
+    }
+    else
+    {
+        pdf_add_text( pdf, NULL, throughput_txt, text_size_data, 385, 190, PDF_BLACK );
+    }
     pdf_set_font( pdf, "Helvetica" );
 
     /********
@@ -465,19 +514,48 @@ int create_single_disc_pdf( nwipe_thread_data_ptr_t* ptrx, nwipe_context_t* ptr 
     }
 
     /* info descripting what bytes erased actually means */
-    pdf_add_text( pdf,
-                  NULL,
-                  "* bytes erased: The amount of drive that's been erased at least once",
-                  text_size_data,
-                  60,
-                  137,
-                  PDF_BLACK );
-
-    /* meaning of abreviation DDNSHPA */
-    if( c->HPA_status == HPA_NOT_SUPPORTED_BY_DRIVE )
+    if( c->secure_erase_orchestration == NWIPE_SECURE_ERASE_ORCHESTRATION_STANDALONE )
     {
-        pdf_add_text(
-            pdf, NULL, "** DDNSHPA = Drive does not support HPA/DCO", text_size_data, 60, 125, PDF_DARK_GREEN );
+        pdf_add_text( pdf,
+                      NULL,
+                      "* bytes erased: Reported user-accessible bytes wiped (unverified)",
+                      text_size_data,
+                      60,
+                      147,
+                      PDF_BLACK );
+
+        pdf_add_text( pdf,
+                      NULL,
+                      "Assuming secure erase zeroed the drive, a verification pass is also recommended",
+                      text_size_data,
+                      60,
+                      137,
+                      PDF_BLACK );
+
+        pdf_add_text( pdf,
+                      NULL,
+                      "To verify the reliability of the drive a PRNG and verification is recommended",
+                      text_size_data,
+                      60,
+                      127,
+                      PDF_BLACK );
+    }
+    else
+    {
+        pdf_add_text( pdf,
+                      NULL,
+                      "* bytes erased: The amount of drive that's been erased at least once",
+                      text_size_data,
+                      60,
+                      137,
+                      PDF_BLACK );
+
+        /* meaning of abreviation DDNSHPA */
+        if( c->HPA_status == HPA_NOT_SUPPORTED_BY_DRIVE )
+        {
+            pdf_add_text(
+                pdf, NULL, "** DDNSHPA = Drive does not support HPA/DCO", text_size_data, 60, 125, PDF_DARK_GREEN );
+        }
     }
     pdf_set_font( pdf, "Helvetica" );
 
@@ -518,9 +596,12 @@ int create_single_disc_pdf( nwipe_thread_data_ptr_t* ptrx, nwipe_context_t* ptr 
     nwipe_get_smart_data( d, PDF_TYPE_SINGLE_DISC, &page_number, c );
 
     /***************************************
-     * Add speed profile graph
+     * Add speed profile graph but NOT for standalone secure erase
      */
-    create_pdf_speed_profile_page( d, PDF_TYPE_SINGLE_DISC, &page_number, c );
+    if( c->secure_erase_orchestration != NWIPE_SECURE_ERASE_ORCHESTRATION_STANDALONE )
+    {
+        create_pdf_speed_profile_page( d, PDF_TYPE_SINGLE_DISC, &page_number, c );
+    }
 
     /*****************************
      * Create the reports filename
