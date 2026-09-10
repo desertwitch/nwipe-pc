@@ -1,0 +1,148 @@
+name: ci-ubuntu-latest-harder
+
+on:
+  push:
+  pull_request:
+
+env:
+  WARN_COMMON: >-
+    -Wall -Wextra
+    -Wsign-compare -Wuninitialized -Wformat-truncation
+    -Wduplicated-cond -Wduplicated-branches -Wlogical-op
+    -Wnull-dereference -Wformat=2 -Wvla
+    -Wshadow -Wcast-align=strict -Wcast-qual -Wpointer-arith
+    -Wwrite-strings -Wundef
+    -Wno-system-headers
+  WARN_C_ONLY: >-
+    -Wstrict-prototypes -Wold-style-definition -Wmissing-prototypes
+    -Wnested-externs -Wjump-misses-init
+  WARN_NOISY: >-
+    -Wconversion -Wsign-conversion -Wfloat-conversion
+  LIBNVME_VERSION: "1.16.1"
+
+jobs:
+  warnings-gcc:
+    name: gcc
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config automake \
+            libncurses5-dev autotools-dev libparted-dev libconfig-dev \
+            libconfig++-dev dmidecode meson ninja-build libjson-c-dev
+
+      - name: Build libnvme dependency
+        run: |
+          wget https://github.com/linux-nvme/libnvme/archive/refs/tags/v${LIBNVME_VERSION}.tar.gz
+          tar xfz v${LIBNVME_VERSION}.tar.gz
+          cd libnvme-${LIBNVME_VERSION}
+          meson setup .build
+          meson compile -C .build
+          sudo meson install -C .build
+          sudo ldconfig
+
+      - name: Generate autogen files
+        run: ./autogen.sh
+
+      - name: Configure
+        run: |
+          ./configure --with-libnvme \
+            CFLAGS="-O2 -g $WARN_COMMON $WARN_C_ONLY" \
+            CXXFLAGS="-O2 -g $WARN_COMMON"
+
+      - name: Build
+        run: |
+          make -j$(nproc) \
+            CFLAGS="-O2 -g $WARN_COMMON $WARN_C_ONLY" \
+            CXXFLAGS="-O2 -g $WARN_COMMON"
+
+  warnings-clang:
+    name: clang
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    env:
+      CLANG_WARN: >-
+        -Wall -Wextra
+        -Wshadow -Wcast-qual -Wcast-align -Wpointer-arith
+        -Wformat=2 -Wvla -Wwrite-strings -Wundef
+        -Wconditional-uninitialized -Wloop-analysis
+        -Wcomma -Wassign-enum -Wtautological-compare
+      CLANG_WARN_C_ONLY: >-
+        -Wstrict-prototypes -Wmissing-prototypes -Wnested-externs
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang build-essential pkg-config automake \
+            libncurses5-dev autotools-dev libparted-dev libconfig-dev \
+            libconfig++-dev dmidecode meson ninja-build libjson-c-dev
+
+      - name: Build libnvme dependency
+        run: |
+          wget https://github.com/linux-nvme/libnvme/archive/refs/tags/v${LIBNVME_VERSION}.tar.gz
+          tar xfz v${LIBNVME_VERSION}.tar.gz
+          cd libnvme-${LIBNVME_VERSION}
+          meson setup .build
+          meson compile -C .build
+          sudo meson install -C .build
+          sudo ldconfig
+
+      - name: Generate autogen files
+        run: ./autogen.sh
+
+      - name: Configure
+        run: |
+          ./configure --with-libnvme CC=clang CXX=clang++ \
+            CFLAGS="-O2 -g $CLANG_WARN $CLANG_WARN_C_ONLY" \
+            CXXFLAGS="-O2 -g $CLANG_WARN"
+
+      - name: Build
+        run: |
+          make -j$(nproc) CC=clang CXX=clang++ \
+            CFLAGS="-O2 -g $CLANG_WARN $CLANG_WARN_C_ONLY" \
+            CXXFLAGS="-O2 -g $CLANG_WARN"
+
+  fanalyzer:
+    name: gcc -fanalyzer
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config automake \
+            libncurses5-dev autotools-dev libparted-dev libconfig-dev \
+            libconfig++-dev dmidecode meson ninja-build libjson-c-dev
+
+      - name: Build libnvme dependency
+        run: |
+          wget https://github.com/linux-nvme/libnvme/archive/refs/tags/v${LIBNVME_VERSION}.tar.gz
+          tar xfz v${LIBNVME_VERSION}.tar.gz
+          cd libnvme-${LIBNVME_VERSION}
+          meson setup .build
+          meson compile -C .build
+          sudo meson install -C .build
+          sudo ldconfig
+
+      - name: Generate autogen files
+        run: ./autogen.sh
+
+      - name: Configure
+        run: |
+          ./configure --with-libnvme \
+            CFLAGS="-O1 -g $WARN_COMMON $WARN_C_ONLY $WARN_NOISY" \
+            CXXFLAGS="-O1 -g $WARN_COMMON $WARN_NOISY"
+
+      - name: Build with analyzer
+        run: |
+          make -j$(nproc) \
+            CFLAGS="-O1 -g $WARN_COMMON $WARN_C_ONLY $WARN_NOISY -fanalyzer" \
+            CXXFLAGS="-O1 -g $WARN_COMMON $WARN_NOISY"
