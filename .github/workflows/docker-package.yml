@@ -55,7 +55,7 @@ jobs:
             BRANCH=${{ github.ref_name }}
             COMMIT=${{ github.sha }}
           context: .
-          platforms: linux/amd64,linux/arm64,linux/arm/v7,linux/386
+          platforms: ${{ github.ref == 'refs/heads/devel' && 'linux/amd64' || 'linux/amd64,linux/arm64,linux/arm/v7,linux/386' }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
