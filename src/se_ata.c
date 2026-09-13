@@ -201,7 +201,7 @@ static const unsigned int default_timeout_secs = 15;
 static const unsigned int sanitize_poll_timeout_secs = 10;
 static const unsigned int sanitize_action_timeout_secs = 60;
 
-static void dump_bytes( const char* f, const char* prefix, unsigned char* p, int len )
+static void dump_bytes( nwipe_log_t lvl, const char* f, const char* prefix, unsigned char* p, int len )
 {
     char line[128];
     int pos;
@@ -215,9 +215,25 @@ static void dump_bytes( const char* f, const char* prefix, unsigned char* p, int
             if( pos < (int) sizeof( line ) )
                 pos += snprintf( line + pos, sizeof( line ) - (size_t) pos, " %02x", p[row + col] );
         }
-        nwipe_log( NWIPE_LOG_DEBUG, "%s: %s", f, line );
+        nwipe_log( lvl, "%s: %s", f, line );
     }
 } /* dump_bytes */
+
+static void dump_bytes_line( nwipe_log_t lvl, const char* f, const char* prefix, unsigned char* p, int len )
+{
+    char line[256];
+    int pos = 0;
+
+    line[0] = '\0';
+    for( int i = 0; i < len; i++ )
+    {
+        if( pos >= (int) sizeof( line ) - 4 )
+            break;
+        pos += snprintf( line + pos, sizeof( line ) - (size_t) pos, " %02x", p[i] );
+    }
+
+    nwipe_log( lvl, "%s: %s[]:%s", f, prefix ? prefix : "", line );
+} /* dump_bytes_line */
 
 static inline int needs_lba48( __u8 ata_op, __u64 lba, unsigned int nsect )
 {
@@ -384,9 +400,9 @@ sg16( int fd, int rw, int dma, struct ata_tf* tf, void* data, unsigned int data_
     io_hdr.pack_id = (int) tf_to_lba( tf );
     io_hdr.timeout = ( timeout_secs ? timeout_secs : default_timeout_secs ) * 1000;
 
-    dump_bytes( __FUNCTION__, "cdb", cdb, (int) sizeof( cdb ) );
+    dump_bytes( NWIPE_LOG_DEBUG, __FUNCTION__, "cdb", cdb, (int) sizeof( cdb ) );
     if( rw && data )
-        dump_bytes( __FUNCTION__, "outgoing_data", data, (int) data_bytes );
+        dump_bytes( NWIPE_LOG_DEBUG, __FUNCTION__, "outgoing_data", data, (int) data_bytes );
 
     if( ioctl( fd, SG_IO, &io_hdr ) == -1 )
     {
@@ -434,17 +450,19 @@ sg16( int fd, int rw, int dma, struct ata_tf* tf, void* data, unsigned int data_
         return -1;
     }
 
-    dump_bytes( __FUNCTION__, "sb", sb, sizeof( sb ) );
+    dump_bytes( NWIPE_LOG_DEBUG, __FUNCTION__, "sb", sb, (int) sizeof( sb ) );
     if( !rw && data )
-        dump_bytes( __FUNCTION__, "incoming_data", data, (int) data_bytes );
+        dump_bytes( NWIPE_LOG_DEBUG, __FUNCTION__, "incoming_data", data, (int) data_bytes );
 
     if( io_hdr.driver_status && ( io_hdr.driver_status != SG_DRIVER_SENSE ) )
     {
         nwipe_log( NWIPE_LOG_ERROR,
-                   "%s: bad driver status (ata_op=0x%02x driver_status=0x%04x)",
+                   "%s: bad driver status (ata_op=0x%02x driver_status=0x%04x sb_len_wr=%u)",
                    __FUNCTION__,
                    tf->command,
-                   io_hdr.driver_status );
+                   io_hdr.driver_status,
+                   (unsigned) io_hdr.sb_len_wr );
+        dump_bytes_line( NWIPE_LOG_ERROR, __FUNCTION__, "sb", sb, (int) sizeof( sb ) ); /* Just in case */
         errno = EBADE;
         return -1;
     }
@@ -454,7 +472,12 @@ sg16( int fd, int rw, int dma, struct ata_tf* tf, void* data, unsigned int data_
         if( data == NULL )
         {
             /* CK_COND was requested (not an IDENTIFY command), but no registers were returned */
-            nwipe_log( NWIPE_LOG_ERROR, "%s: missing sense data (ata_op=0x%02x)", __FUNCTION__, tf->command );
+            nwipe_log( NWIPE_LOG_ERROR,
+                       "%s: missing sense data (ata_op=0x%02x sb_len_wr=%u)",
+                       __FUNCTION__,
+                       tf->command,
+                       (unsigned) io_hdr.sb_len_wr );
+            dump_bytes_line( NWIPE_LOG_ERROR, __FUNCTION__, "sb", sb, (int) sizeof( sb ) ); /* Just in case */
             errno = EBADE;
             return -1;
         }
@@ -483,17 +506,20 @@ sg16( int fd, int rw, int dma, struct ata_tf* tf, void* data, unsigned int data_
 
         if( !( tf->status & ( ATA_STAT_ERR | ATA_STAT_DRQ ) ) )
         {
-            nwipe_log( NWIPE_LOG_ERROR,
-                       "%s: fixed sense without ATA error status (ata_op=0x%02x valid=%u stat=0x%02x err=0x%02x "
-                       "key=0x%02x asc=0x%02x ascq=0x%02x)",
-                       __FUNCTION__,
-                       tf->command,
-                       (unsigned) !!( sb[0] & 0x80 ),
-                       tf->status,
-                       tf->error,
-                       sb[2] & 0x0f,
-                       sb[12],
-                       sb[13] );
+            nwipe_log(
+                NWIPE_LOG_ERROR,
+                "%s: fixed sense without ATA error status (ata_op=0x%02x sb_len_wr=%u valid=%u stat=0x%02x err=0x%02x "
+                "key=0x%02x asc=0x%02x ascq=0x%02x)",
+                __FUNCTION__,
+                tf->command,
+                (unsigned) io_hdr.sb_len_wr,
+                (unsigned) !!( sb[0] & 0x80 ),
+                tf->status,
+                tf->error,
+                sb[2] & 0x0f,
+                sb[12],
+                sb[13] );
+            dump_bytes_line( NWIPE_LOG_ERROR, __FUNCTION__, "sb", sb, (int) sizeof( sb ) );
             errno = EBADE;
             return -1;
         }
@@ -532,6 +558,7 @@ sg16( int fd, int rw, int dma, struct ata_tf* tf, void* data, unsigned int data_
                    sb[1] & 0x0f,
                    sb[2],
                    sb[3] );
+        dump_bytes_line( NWIPE_LOG_ERROR, __FUNCTION__, "sb", sb, (int) sizeof( sb ) );
         errno = EBADE;
         return -1;
     }
@@ -539,7 +566,7 @@ sg16( int fd, int rw, int dma, struct ata_tf* tf, void* data, unsigned int data_
     unsigned int len = desc[1] + 2, maxlen = sizeof( sb ) - 8 - 2;
     if( len > maxlen )
         len = maxlen;
-    dump_bytes( __FUNCTION__, "desc[]", desc, (int) len );
+    dump_bytes( NWIPE_LOG_DEBUG, __FUNCTION__, "desc[]", desc, (int) len );
 
     tf->is_lba48 = desc[2] & 1;
     tf->error = desc[3];
