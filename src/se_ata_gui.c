@@ -15,6 +15,7 @@
 #include <ncurses.h>
 #include <panel.h>
 #include <unistd.h>
+#include <errno.h>
 
 #include "nwipe.h"
 #include "context.h"
@@ -497,7 +498,7 @@ static void nwipe_gui_se_ata_monitor( nwipe_context_t* ctx, nwipe_se_ata_ctx* sa
 
         if( gui_blank == 0 )
         {
-            if( poll_err != poll_err_prev ) /* Footer changed */
+            if( !!( poll_err ) != !!( poll_err_prev ) ) /* Footer changed */
             {
                 werase( footer_window );
                 nwipe_gui_amend_footer_window( ftr_progress_1, ftr_progress_2 );
@@ -514,6 +515,7 @@ static void nwipe_gui_se_ata_monitor( nwipe_context_t* ctx, nwipe_se_ata_ctx* sa
 
             if( poll_err )
             {
+                yy++;
                 mvwprintw( main_window, yy++, tab1, "Unable to read sanitize status (error %d)", poll_err );
                 if( san->error_msg[0] )
                     mvwprintw( main_window, yy++, tab1, "Error message: %s", san->error_msg );
@@ -536,10 +538,23 @@ static void nwipe_gui_se_ata_monitor( nwipe_context_t* ctx, nwipe_se_ata_ctx* sa
             }
 
             yy++;
-            mvwprintw( main_window, yy++, tab1, "Do not panic if no progress is reported; some" );
-            mvwprintw( main_window, yy++, tab1, "devices become unresponsive until completion." );
-            mvwprintw( main_window, yy++, tab1, "Just keep waiting, it can take a long time..." );
-            mvwprintw( main_window, yy++, tab1, "DO NOT RESTART SYSTEM AND NEVER CUT THE POWER" );
+            if( poll_err != ENODEV && poll_err != ENXIO )
+            {
+                mvwprintw( main_window, yy++, tab1, "Do not panic if no progress is reported; some" );
+                mvwprintw( main_window, yy++, tab1, "devices become unresponsive until completion." );
+                mvwprintw( main_window, yy++, tab1, "Just keep waiting, it can take a long time..." );
+                mvwprintw( main_window, yy++, tab1, "DO NOT RESTART SYSTEM AND NEVER CUT THE POWER" );
+            }
+            else /* Device is gone */
+            {
+                wattron( main_window, COLOR_PAIR( 9 ) );
+                mvwprintw( main_window, yy++, tab1, "It seems that the device has disappeared." );
+                mvwprintw( main_window, yy++, tab1, "Some devices reset upon completion of the sanitize." );
+                mvwprintw( main_window, yy++, tab1, "CTRL+C if nothing happens within the next 10 minutes," );
+                mvwprintw( main_window, yy++, tab1, "and restart Nwipe to investigate the sanitize status." );
+                mvwprintw( main_window, yy++, tab1, "DO NOT CUT POWER UNTIL CERTAIN SANITIZE HAS FINISHED." );
+                wattroff( main_window, COLOR_PAIR( 9 ) );
+            }
 
             box( main_window, 0, 0 );
             nwipe_gui_title( main_window, nwipe_gui_se_ata_title );
