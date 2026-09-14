@@ -538,7 +538,7 @@ static void nwipe_gui_se_ata_monitor( nwipe_context_t* ctx, nwipe_se_ata_ctx* sa
             }
 
             yy++;
-            if( poll_err != ENODEV && poll_err != ENXIO )
+            if( poll_err != -ENODEV && poll_err != -ENXIO )
             {
                 mvwprintw( main_window, yy++, tab1, "Do not panic if no progress is reported; some" );
                 mvwprintw( main_window, yy++, tab1, "devices become unresponsive until completion." );
