@@ -1,6 +1,7 @@
 name: docker-package
 
 on:
+  workflow_dispatch:
   push:
     branches: ['master', 'devel']
     tags:
@@ -17,6 +18,11 @@ jobs:
     permissions:
       contents: read
       packages: write
+    env:
+      PLATFORMS: >-
+        ${{ (github.ref == 'refs/heads/devel' && github.event_name == 'push')
+            && 'linux/amd64'
+            || 'linux/amd64,linux/arm64,linux/arm/v7,linux/386' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -55,7 +61,7 @@ jobs:
             BRANCH=${{ github.ref_name }}
             COMMIT=${{ github.sha }}
           context: .
-          platforms: linux/amd64,linux/arm64,linux/arm/v7,linux/386
+          platforms: ${{ env.PLATFORMS }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
