@@ -954,7 +954,7 @@ int nwipe_se_ata_sancap( nwipe_se_ata_ctx* san )
  * Polls the sanitize status using SANITIZE_STATUS_EXT.
  * Updates san->state and san->progress_* variables of the context.
  * Avoid hammering of device with calls in a tight loop, ensure delays.
- * Success returns 0; errors -1, logs and populates san->error_msg buffer.
+ * Success returns 0; errors the errno, logs and populates san->error_msg.
  */
 int nwipe_se_ata_poll( nwipe_se_ata_ctx* san )
 {
@@ -964,7 +964,7 @@ int nwipe_se_ata_poll( nwipe_se_ata_ctx* san )
     {
         snprintf( san->error_msg, sizeof( san->error_msg ), "FD is not open" );
         nwipe_log( NWIPE_LOG_ERROR, "%s: %s: FD is not open", __FUNCTION__, san->device_path );
-        return -1;
+        return EBADF;
     }
 
     struct hdio_taskfile r;
@@ -1000,7 +1000,7 @@ int nwipe_se_ata_poll( nwipe_se_ata_ctx* san )
                    eno,
                    lbal_to_error_str( lbal ) );
 
-        return -1;
+        return eno ? eno : EBADE;
     }
 
     san->state_raw = r.hob.nsect;
