@@ -533,7 +533,7 @@ static void nwipe_gui_se_nvme_monitor( nwipe_context_t* ctx, nwipe_se_nvme_ctx* 
         else
         {
             ftr_progress_1 = "Retrying... press CTRL+C to abort and exit Nwipe";
-            ftr_progress_2 = "The operation itself may proceed to run on the device";
+            ftr_progress_2 = "A program exit will not abort the operation on the device";
         }
 
         if( gui_blank == 0 )
