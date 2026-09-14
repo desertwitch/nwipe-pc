@@ -14,6 +14,7 @@
 #include <time.h>
 #include <ncurses.h>
 #include <panel.h>
+#include <unistd.h>
 
 #include "nwipe.h"
 #include "context.h"
@@ -25,9 +26,16 @@
 #include "miscellaneous.h"
 
 extern int terminate_signal;
+extern int tft_saver;
 extern WINDOW* main_window;
 extern WINDOW* footer_window;
+extern PANEL* footer_panel;
+extern PANEL* header_panel;
+extern PANEL* main_panel;
+extern PANEL* options_panel;
+extern PANEL* stats_panel;
 extern nwipe_thread_data_ptr_t* global_nwipe_thread_data_ptr;
+extern char** p_end_wipe_footer;
 
 #define NWIPE_GUI_SE_ATA_ACTION_COUNT 4
 #define NWIPE_GUI_SE_ATA_ACTION_DESC_LINES 4
@@ -453,11 +461,12 @@ static int nwipe_gui_se_ata_overwrite_opts( nwipe_context_t* ctx, nwipe_se_ata_c
 
 static void nwipe_gui_se_ata_monitor( nwipe_context_t* ctx, nwipe_se_ata_ctx* san )
 {
-    const char* ftr_progress_1 = "No keyboard actions are available";
-    const char* ftr_progress_2 = "";
+    const char* ftr_progress_1 = *p_end_wipe_footer;
+    const char* ftr_progress_2 = "A program exit will not abort the operation on the device";
     int poll_err = 0;
     int poll_err_prev = 0;
     int user_aborted = 0;
+    int gui_blank = 0;
 
     /* Record start time (covers new & resumed erases) */
     time( &ctx->start_time );
@@ -477,61 +486,65 @@ static void nwipe_gui_se_ata_monitor( nwipe_context_t* ctx, nwipe_se_ata_ctx* sa
 
         if( !poll_err )
         {
-            ftr_progress_1 = "No keyboard actions are available";
-            ftr_progress_2 = "";
+            ftr_progress_1 = *p_end_wipe_footer;
+            ftr_progress_2 = "A program exit will not abort the operation on the device";
         }
         else
         {
             ftr_progress_1 = "Retrying... press CTRL+C to abort and exit Nwipe";
             ftr_progress_2 = "The operation itself may proceed to run on the device";
         }
-        if( poll_err != poll_err_prev ) /* Footer changed */
+
+        if( gui_blank == 0 )
         {
-            werase( footer_window );
-            nwipe_gui_amend_footer_window( ftr_progress_1, ftr_progress_2 );
-            wrefresh( footer_window );
-        }
+            if( poll_err != poll_err_prev ) /* Footer changed */
+            {
+                werase( footer_window );
+                nwipe_gui_amend_footer_window( ftr_progress_1, ftr_progress_2 );
+                wrefresh( footer_window );
+            }
 
-        werase( main_window );
-        nwipe_gui_create_all_windows_on_terminal_resize( 0, ftr_progress_1, ftr_progress_2 );
+            werase( main_window );
+            nwipe_gui_create_all_windows_on_terminal_resize( 0, ftr_progress_1, ftr_progress_2 );
 
-        nwipe_gui_se_ata_print_device( ctx, san, main_window, &yy, tab1, &san->sanact );
-        yy++;
-
-        mvwprintw( main_window, yy++, tab1, "Device accepted the command." );
-
-        if( poll_err )
-        {
-            mvwprintw( main_window, yy++, tab1, "Unable to read sanitize status (error %d)", poll_err );
-            if( san->error_msg[0] )
-                mvwprintw( main_window, yy++, tab1, "Error message: %s", san->error_msg );
-        }
-        else
-        {
-            mvwprintw( main_window, yy++, tab1, "Device status: %s", nwipe_gui_se_ata_status_str( san ) );
+            nwipe_gui_se_ata_print_device( ctx, san, main_window, &yy, tab1, &san->sanact );
             yy++;
 
-            if( san->state == NWIPE_SE_ATA_STATE_IN_PROGRESS )
+            mvwprintw( main_window, yy++, tab1, "Device accepted the command." );
+
+            if( poll_err )
             {
-                mvwprintw( main_window,
-                           yy++,
-                           tab1,
-                           "Progress: %d%% [0x%04x]",
-                           san->progress_pct,
-                           (unsigned) san->progress_raw );
-                nwipe_gui_se_ata_progress_bar( main_window, yy++, tab1, 40, san->progress_pct );
+                mvwprintw( main_window, yy++, tab1, "Unable to read sanitize status (error %d)", poll_err );
+                if( san->error_msg[0] )
+                    mvwprintw( main_window, yy++, tab1, "Error message: %s", san->error_msg );
             }
+            else
+            {
+                mvwprintw( main_window, yy++, tab1, "Device status: %s", nwipe_gui_se_ata_status_str( san ) );
+                yy++;
+
+                if( san->state == NWIPE_SE_ATA_STATE_IN_PROGRESS )
+                {
+                    mvwprintw( main_window,
+                               yy++,
+                               tab1,
+                               "Progress: %d%% [0x%04x]",
+                               san->progress_pct,
+                               (unsigned) san->progress_raw );
+                    nwipe_gui_se_ata_progress_bar( main_window, yy++, tab1, 40, san->progress_pct );
+                }
+            }
+
+            yy++;
+            mvwprintw( main_window, yy++, tab1, "Do not panic if no progress is reported; some" );
+            mvwprintw( main_window, yy++, tab1, "devices become unresponsive until completion." );
+            mvwprintw( main_window, yy++, tab1, "Just keep waiting, it can take a long time..." );
+            mvwprintw( main_window, yy++, tab1, "DO NOT RESTART SYSTEM AND NEVER CUT THE POWER" );
+
+            box( main_window, 0, 0 );
+            nwipe_gui_title( main_window, nwipe_gui_se_ata_title );
+            wrefresh( main_window );
         }
-
-        yy++;
-        mvwprintw( main_window, yy++, tab1, "Do not panic if no progress is reported; some" );
-        mvwprintw( main_window, yy++, tab1, "devices become unresponsive until completion." );
-        mvwprintw( main_window, yy++, tab1, "Just keep waiting, it can take a long time..." );
-        mvwprintw( main_window, yy++, tab1, "DO NOT RESTART SYSTEM AND NEVER CUT THE POWER" );
-
-        box( main_window, 0, 0 );
-        nwipe_gui_title( main_window, nwipe_gui_se_ata_title );
-        wrefresh( main_window );
 
         /* Finished? */
         if( !poll_err && san->state != NWIPE_SE_ATA_STATE_IN_PROGRESS )
@@ -544,20 +557,99 @@ static void nwipe_gui_se_ata_monitor( nwipe_context_t* ctx, nwipe_se_ata_ctx* sa
             keystroke = getch();
             timeout( -1 );
 
-#if 0 /* TODO: re-enable if monitoring should be interruptible */
-            switch( keystroke )
+            if( gui_blank == 1 && keystroke > 0x0a && keystroke < 0x7e ) /* Wake up screen */
             {
-                case KEY_BACKSPACE:
-                case KEY_BREAK:
-                case 27: /* ESC */
-                    user_aborted = 1;
+                tft_saver = 0;
+                nwipe_init_pairs();
+                nwipe_gui_create_all_windows_on_terminal_resize( 1, ftr_progress_1, ftr_progress_2 );
+
+                /* Show screen */
+                gui_blank = 0;
+
+                /* Set background */
+                wbkgdset( stdscr, COLOR_PAIR( 1 ) );
+                wclear( stdscr );
+
+                /* Unhide panels */
+                show_panel( header_panel );
+                show_panel( footer_panel );
+                show_panel( stats_panel );
+                show_panel( options_panel );
+                show_panel( main_panel );
+
+                /* Reprint the footer */
+                werase( footer_window );
+                nwipe_gui_amend_footer_window( ftr_progress_1, ftr_progress_2 );
+                wnoutrefresh( footer_window );
+
+                /* Update panels */
+                update_panels();
+                doupdate();
+
+                /* Refresh immediately */
+                goto loop_end;
+            }
+            else if( keystroke > 0 )
+            {
+                switch( keystroke )
+                {
+#if 0 /* TODO: re-enable if monitoring should be interruptible */
+                    case KEY_BACKSPACE:
+                    case KEY_BREAK:
+                    case 27: /* ESC */
+                        user_aborted = 1;
+                        break;
+#endif
+                    case 'b':
+                    case 'B':
+                        if( gui_blank == 0 && tft_saver != 1 ) /* normal -> saver */
+                        {
+                            /* Grey text on black background */
+                            tft_saver = 1;
+                            nwipe_init_pairs();
+                            nwipe_gui_create_all_windows_on_terminal_resize( 1, ftr_progress_1, ftr_progress_2 );
+                        }
+                        else if( gui_blank == 0 && tft_saver == 1 ) /* saver -> blank */
+                        {
+                            tft_saver = 0;
+                            gui_blank = 1;
+
+                            hide_panel( header_panel );
+                            hide_panel( footer_panel );
+                            hide_panel( stats_panel );
+                            hide_panel( options_panel );
+                            hide_panel( main_panel );
+
+                            wbkgdset( stdscr, COLOR_PAIR( 7 ) );
+                            wclear( stdscr );
+
+                            update_panels();
+                            doupdate();
+                        }
+
+                        /* Refresh immediately */
+                        goto loop_end;
+
+                    case 'f':
+                        /* The f key is only meaningful for ShredOS, it toggles the fontsize */
+                        if( access( "/usr/bin/shredos_toggle_font_size.sh", F_OK ) == 0 )
+                        {
+                            if( system( "/usr/bin/shredos_toggle_font_size.sh > /dev/null 2>&1" ) == 0 )
+                            {
+                                nwipe_log( NWIPE_LOG_INFO, "Toggle font size" );
+                            }
+                        }
+
+                        /* Refresh immediately */
+                        goto loop_end;
+                }
+
+                if( user_aborted )
                     break;
             }
-#endif
-            if( user_aborted )
-                break;
         }
 
+    loop_end:
         if( user_aborted )
             break;
 
@@ -573,6 +665,36 @@ static void nwipe_gui_se_ata_monitor( nwipe_context_t* ctx, nwipe_se_ata_ctx* sa
         : "Enter=Return";
     const char* result_status_str = nwipe_gui_se_ata_status_str( san );
     int logged = 0;
+
+    if( gui_blank || tft_saver ) /* Restore screen for result */
+    {
+        tft_saver = 0;
+        nwipe_init_pairs();
+        nwipe_gui_create_all_windows_on_terminal_resize( 1, ftr_results, "" );
+
+        /* Show screen */
+        gui_blank = 0;
+
+        /* Set background */
+        wbkgdset( stdscr, COLOR_PAIR( 1 ) );
+        wclear( stdscr );
+
+        /* Unhide panels */
+        show_panel( header_panel );
+        show_panel( footer_panel );
+        show_panel( stats_panel );
+        show_panel( options_panel );
+        show_panel( main_panel );
+
+        /* Reprint the footer */
+        werase( footer_window );
+        nwipe_gui_amend_footer_window( ftr_results, "" );
+        wnoutrefresh( footer_window );
+
+        /* Update panels */
+        update_panels();
+        doupdate();
+    }
 
     werase( footer_window );
     nwipe_gui_amend_footer_window( ftr_results, "" );

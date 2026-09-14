@@ -28,6 +28,7 @@
 void nwipe_gui_free( void );  // Stop the GUI.
 void nwipe_gui_init( void );  // Start the GUI.
 void nwipe_gui_title( WINDOW* w, const char* s );
+void nwipe_init_pairs( void );
 void nwipe_gui_create_main_window( void );  // Create the main window
 void nwipe_gui_create_header_window( void );  // Create the header window
 void nwipe_gui_create_footer_window( const char* footer_line1,
