@@ -323,7 +323,8 @@ int nwipe_se_nvme_sancap( nwipe_se_nvme_ctx* san )
  * Polls the sanitize status using nvme_get_log_sanitize().
  * Updates san->state, san->progress_* and san_est_* variables.
  * Avoid hammering of device with calls in a tight loop, ensure delays.
- * Success returns 0; errors the errno, logs and populates san->error_msg.
+ * Success returns 0, error returns -errno or 1 if no errno was available.
+ * Error messages are written into the san->error_msg for GUI consumption.
  */
 int nwipe_se_nvme_poll( nwipe_se_nvme_ctx* san )
 {
@@ -333,7 +334,7 @@ int nwipe_se_nvme_poll( nwipe_se_nvme_ctx* san )
     {
         snprintf( san->error_msg, sizeof( san->error_msg ), "FD is not open" );
         nwipe_log( NWIPE_LOG_ERROR, "%s: %s: FD is not open", __FUNCTION__, san->ctrl_path );
-        return EBADF;
+        return -EBADF;
     }
 
     struct nvme_sanitize_log_page* log = nwipe_se_nvme_alloc( sizeof( *log ) );
@@ -341,7 +342,7 @@ int nwipe_se_nvme_poll( nwipe_se_nvme_ctx* san )
     {
         snprintf( san->error_msg, sizeof( san->error_msg ), "Log page allocation failed" );
         nwipe_log( NWIPE_LOG_ERROR, "%s: %s: nvme_sanitize_log_page allocation failed", __FUNCTION__, san->ctrl_path );
-        return ENOMEM;
+        return -ENOMEM;
     }
 
     int err = nvme_get_log_sanitize( san->fd, false, log );
@@ -374,7 +375,7 @@ int nwipe_se_nvme_poll( nwipe_se_nvme_ctx* san )
         }
 
         free( log );
-        return eno ? eno : EBADE;
+        return eno ? -eno : 1;
     }
 
     __u16 sstat = le16toh( log->sstat );
