@@ -513,7 +513,7 @@ static void nwipe_gui_se_nvme_monitor( nwipe_context_t* ctx, nwipe_se_nvme_ctx* 
 
     do
     {
-        int yy = 2;
+        int yy;
         int keystroke;
         const int tab1 = 2;
 
@@ -537,6 +537,8 @@ static void nwipe_gui_se_nvme_monitor( nwipe_context_t* ctx, nwipe_se_nvme_ctx* 
             ftr_progress_2 = "A program exit will not abort the operation on the device";
         }
 
+    redraw:
+        yy = 2;
         if( gui_blank == 0 )
         {
             if( !!( poll_err ) != !!( poll_err_prev ) ) /* Footer changed */
@@ -653,7 +655,7 @@ static void nwipe_gui_se_nvme_monitor( nwipe_context_t* ctx, nwipe_se_nvme_ctx* 
                 doupdate();
 
                 /* Refresh immediately */
-                goto loop_end;
+                goto redraw;
             }
             else if( keystroke > 0 )
             {
@@ -694,7 +696,7 @@ static void nwipe_gui_se_nvme_monitor( nwipe_context_t* ctx, nwipe_se_nvme_ctx* 
                         }
 
                         /* Refresh immediately */
-                        goto loop_end;
+                        goto redraw;
 
                     case 'f':
                         /* The f key is only meaningful for ShredOS, it toggles the fontsize */
@@ -707,7 +709,11 @@ static void nwipe_gui_se_nvme_monitor( nwipe_context_t* ctx, nwipe_se_nvme_ctx* 
                         }
 
                         /* Refresh immediately */
-                        goto loop_end;
+                        goto redraw;
+
+                    case KEY_RESIZE:
+                        /* Refresh immediately */
+                        goto redraw;
                 }
 
                 if( user_aborted )
@@ -715,7 +721,6 @@ static void nwipe_gui_se_nvme_monitor( nwipe_context_t* ctx, nwipe_se_nvme_ctx* 
             }
         }
 
-    loop_end:
         if( user_aborted )
             break;
 
