@@ -8,7 +8,6 @@
 #define SE_ATA_H_
 
 #include <linux/types.h> /* __u8, __u16, __u32, __u64 */
-#include <stdbool.h>
 
 /*
  * While the device internal state machine has an "Idle" (SD0)
@@ -62,7 +61,7 @@ typedef struct
     /* Options (set before nwipe_se_ata_sanitize) */
     nwipe_se_ata_sanact_e planned_sanact;
     int destructive_sanact; /* 0 = No, 1 = Yes */
-    __u8 owpass; /* 0-15 overwrite pass count */
+    __u8 owpass; /* 0-based overwrite passes (0=1..15=16) */
     __u32 ovrpat; /* 32-bit overwrite pattern */
 } nwipe_se_ata_ctx;
 
@@ -72,6 +71,7 @@ void nwipe_se_ata_close( nwipe_se_ata_ctx* san );
 void nwipe_se_ata_destroy( nwipe_se_ata_ctx* san );
 int nwipe_se_ata_sancap( nwipe_se_ata_ctx* san );
 int nwipe_se_ata_poll( nwipe_se_ata_ctx* san );
+int nwipe_se_ata_sanact_is_destructive( nwipe_se_ata_sanact_e act );
 int nwipe_se_ata_sanitize( nwipe_se_ata_ctx* san );
 
 #endif /* SE_ATA_H_ */

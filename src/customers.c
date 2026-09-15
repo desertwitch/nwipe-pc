@@ -473,7 +473,7 @@ void write_customer_csv_entry( char* customer_name,
                                                        nwipe_customers_file_backup_tmp );
                                         }
                                         nwipe_log( NWIPE_LOG_INFO,
-                                                   "Succesfully write new customer entry to %s",
+                                                   "Successfully write new customer entry to %s",
                                                    nwipe_customers_file );
                                     }
                                 }

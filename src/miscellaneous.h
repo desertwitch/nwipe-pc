@@ -56,18 +56,22 @@ void strlower( char* str );
 u64 str_ascii_number_to_ll( char* );
 
 void Determine_C_B_nomenclature( u64, char*, int );
+
 void convert_seconds_to_hours_minutes_seconds( u64, int*, int*, int* );
+
+void calculate_duration_string( nwipe_context_t* ctx );
+
 int nwipe_strip_path( char*, char* );
 
 /**
- * Scan a string and replace any characters that are not alpha-numeric with
+ * Scan a string and replace any characters that are not alphanumeric with
  * the character_char.
  * Example:
  * char str[] = 18:21:56;
  * calling the function replace_non_alphanumeric( &str, '_' )
  * would result in str changing from 18:21:56 to 18_21_56
  * @param char* pointer to the string to be processed
- * @param char the character used to replace non alpha-numeric characters
+ * @param char the character used to replace non alphanumeric characters
  * @return void
  */
 void replace_non_alphanumeric( char*, char );

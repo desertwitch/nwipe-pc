@@ -276,7 +276,7 @@ void* nwipe_update_temperature_thread( void* ptr )
 void nwipe_update_temperature( nwipe_context_t* c )
 {
     /* Warning !! This function should only be called by nwipe_update_temperature_thread()
-     * Due to delays of upto 2 seconds with some drives, especially SAS in obtaining
+     * Due to delays of up to 2 seconds with some drives, especially SAS in obtaining
      * temperatures while wiping, the delays being worse the more drives you are wiping. Updating
      * temperatures are performed within it's own thread so it doesn't cause momentary freezes
      * in the GUI interface.

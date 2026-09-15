@@ -219,6 +219,28 @@ void convert_seconds_to_hours_minutes_seconds( u64 total_seconds, int* hours, in
     }
 }
 
+void calculate_duration_string( nwipe_context_t* ctx )
+{
+    int hours = 0;
+    int minutes = 0;
+    int seconds = 0;
+    u64 total_duration_seconds;
+
+    /* get current time at the end of the wipe in seconds since epoch  */
+    time( &ctx->end_time );
+
+    /* Calculate duration of wipe in seconds */
+    ctx->duration = ctx->end_time - ctx->start_time;
+
+    total_duration_seconds = (u64) ctx->duration;
+
+    /* Convert binary seconds into three binary variables, hours, minutes and seconds */
+    convert_seconds_to_hours_minutes_seconds( total_duration_seconds, &hours, &minutes, &seconds );
+
+    /* write the duration string to the drive context for later use by create_pdf() */
+    snprintf( ctx->duration_str, sizeof( ctx->duration_str ), "%02i:%02i:%02i", hours, minutes, seconds );
+}
+
 int nwipe_strip_path( char* output, char* input )
 {
     /* Take the input string, say "/dev/sda" and remove the "/dev/", prefix the result
@@ -315,7 +337,7 @@ int read_system_datetime( char* year, char* month, char* day, char* hours, char*
     fp = popen( "date +%Y", "r" );
     if( fp == NULL )
     {
-        nwipe_log( NWIPE_LOG_ERROR, "Failed to obtain system year using commmand = date +%Y" );
+        nwipe_log( NWIPE_LOG_ERROR, "Failed to obtain system year using command = date +%Y" );
     }
     else
     {
@@ -612,15 +634,21 @@ int write_system_datetime( char* year, char* month, char* day, char* hours, char
      */
 
     fp = popen( cmd, "w" );
-    r = pclose( fp );
-
-    if( fp == NULL || r != 0 )
+    if( fp == NULL )
     {
         nwipe_log( NWIPE_LOG_ERROR, "Failed to write system date/time using command = %s", cmd );
     }
     else
     {
-        nwipe_log( NWIPE_LOG_INFO, "Date/time succesfully writen to system using command = %s", cmd );
+        r = pclose( fp );
+        if( r != 0 )
+        {
+            nwipe_log( NWIPE_LOG_ERROR, "Failed to write system date/time using command = %s", cmd );
+        }
+        else
+        {
+            nwipe_log( NWIPE_LOG_INFO, "Date/time successfully written to system using command = %s", cmd );
+        }
     }
 
     return 0;

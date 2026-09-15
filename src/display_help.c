@@ -1,6 +1,7 @@
 #include "stdio.h"
 #include "ANSI-color-codes.h"
 
+/* clang-format off */
 void display_help()
 {
     /************************************************
@@ -8,7 +9,7 @@ void display_help()
      */
 
     /* Limit the line length to a maximum of 80 printable characters so it looks good in 80x25 terminals
-     * on a 4:3 ratio monitor. Note some lines include escape seqences for color coding of characters so
+     * on a 4:3 ratio monitor. Note some lines include escape sequences for color coding of characters so
      * they may appear below longer than they actually are when printed. Case in point, --nousb..
      * that contains esc sequences to color code --nogui within the text.
      * "        Do NOT show or wipe any USB devices whether in GUI mode, " BHCYN "--nogui" reset " or\n" \
@@ -212,3 +213,4 @@ void display_help()
     "        --exclude=/dev/disk/by-id/ata-XXXXXXXX\n" \
     "        --exclude=/dev/disk/by-path/pci-0000:00:17.0-ata-1\n\n");
 }
+/* clang-format on */

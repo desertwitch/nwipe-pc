@@ -4,7 +4,9 @@
  * Based on: hdparm 9.65 - (c) 2007 Mark Lord (BSD-style license)
  */
 
-#define _POSIX_C_SOURCE 200809L
+#ifndef _DEFAULT_SOURCE
+#define _DEFAULT_SOURCE
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,6 +19,8 @@
 #include <sys/types.h>
 #include <scsi/scsi.h>
 #include <scsi/sg.h>
+
+#include <linux/types.h>
 
 #include "nwipe.h"
 #include "context.h"
@@ -194,8 +198,10 @@ struct scsi_sg_io_hdr
 }; /* scsi_sg_io_hdr */
 
 static const unsigned int default_timeout_secs = 15;
+static const unsigned int sanitize_poll_timeout_secs = 10;
+static const unsigned int sanitize_action_timeout_secs = 60;
 
-static void dump_bytes( const char* f, const char* prefix, unsigned char* p, int len )
+static void dump_bytes( nwipe_log_t lvl, const char* f, const char* prefix, unsigned char* p, int len )
 {
     char line[128];
     int pos;
@@ -209,9 +215,25 @@ static void dump_bytes( const char* f, const char* prefix, unsigned char* p, int
             if( pos < (int) sizeof( line ) )
                 pos += snprintf( line + pos, sizeof( line ) - (size_t) pos, " %02x", p[row + col] );
         }
-        nwipe_log( NWIPE_LOG_DEBUG, "%s: %s", f, line );
+        nwipe_log( lvl, "%s: %s", f, line );
     }
 } /* dump_bytes */
+
+static void dump_bytes_line( nwipe_log_t lvl, const char* f, const char* prefix, unsigned char* p, int len )
+{
+    char line[256];
+    int pos = 0;
+
+    line[0] = '\0';
+    for( int i = 0; i < len; i++ )
+    {
+        if( pos >= (int) sizeof( line ) - 4 )
+            break;
+        pos += snprintf( line + pos, sizeof( line ) - (size_t) pos, " %02x", p[i] );
+    }
+
+    nwipe_log( lvl, "%s: %s[]:%s", f, prefix ? prefix : "", line );
+} /* dump_bytes_line */
 
 static inline int needs_lba48( __u8 ata_op, __u64 lba, unsigned int nsect )
 {
@@ -292,6 +314,34 @@ static __u64 tf_to_lba( struct ata_tf* tf )
     return lba64;
 } /* tf_to_lba */
 
+static void tf_from_fixed_sense( struct ata_tf* tf, const unsigned char* sb )
+{
+    if( ( sb[0] & 0x80 ) || ( sb[4] & ( ATA_STAT_ERR | ATA_STAT_DRQ ) ) )
+    { /* New kernel format */
+        tf->error = sb[3];
+        tf->status = sb[4];
+        tf->dev = sb[5];
+        tf->lob.nsect = sb[6];
+        tf->is_lba48 = !!( sb[8] & 0x80 );
+        tf->lob.lbal = sb[9];
+        tf->lob.lbam = sb[10];
+        tf->lob.lbah = sb[11];
+    }
+    else
+    { /* Old kernel format */
+        tf->error = sb[8];
+        tf->status = sb[9];
+        tf->dev = sb[10];
+        tf->lob.nsect = sb[11];
+        tf->is_lba48 = !!( sb[16] & 0x80 );
+        tf->lob.lbal = sb[17];
+        tf->lob.lbam = sb[18];
+        tf->lob.lbah = sb[19];
+    }
+
+    memset( &tf->hob, 0, sizeof( tf->hob ) ); /* Not carried over */
+} /* tf_from_fixed_sense */
+
 static int
 sg16( int fd, int rw, int dma, struct ata_tf* tf, void* data, unsigned int data_bytes, unsigned int timeout_secs )
 {
@@ -350,62 +400,165 @@ sg16( int fd, int rw, int dma, struct ata_tf* tf, void* data, unsigned int data_
     io_hdr.pack_id = (int) tf_to_lba( tf );
     io_hdr.timeout = ( timeout_secs ? timeout_secs : default_timeout_secs ) * 1000;
 
-    dump_bytes( __FUNCTION__, "cdb", cdb, (int) sizeof( cdb ) );
+    dump_bytes( NWIPE_LOG_DEBUG, __FUNCTION__, "cdb", cdb, (int) sizeof( cdb ) );
     if( rw && data )
-        dump_bytes( __FUNCTION__, "outgoing_data", data, (int) data_bytes );
+        dump_bytes( NWIPE_LOG_DEBUG, __FUNCTION__, "outgoing_data", data, (int) data_bytes );
 
     if( ioctl( fd, SG_IO, &io_hdr ) == -1 )
     {
-        nwipe_log( NWIPE_LOG_ERROR, "%s: ioctl() failed: %s (%d)", __FUNCTION__, strerror( errno ), errno );
-        /* errno from ioctl */
+        int eno = errno;
+
+        nwipe_log( NWIPE_LOG_ERROR,
+                   "%s: ioctl(SG_IO) failed (ata_op=0x%02x): %s (%d)",
+                   __FUNCTION__,
+                   tf->command,
+                   strerror( eno ),
+                   eno );
+
+        /* No device response, do not leave the outgoing registers in place */
+        memset( &tf->lob, 0, sizeof( tf->lob ) );
+        memset( &tf->hob, 0, sizeof( tf->hob ) );
+
+        errno = eno; /* errno from ioctl */
         return -1;
     }
 
     nwipe_log( NWIPE_LOG_DEBUG,
-               "%s: ATA_%u status=0x%x, host_status=0x%x, driver_status=0x%x",
+               "%s: ata_op=0x%02x status=0x%02x host_status=0x%04x driver_status=0x%04x",
                __FUNCTION__,
-               io_hdr.cmd_len,
+               tf->command,
                io_hdr.status,
                io_hdr.host_status,
                io_hdr.driver_status );
 
     if( io_hdr.status && io_hdr.status != SG_CHECK_CONDITION )
     {
-        nwipe_log( NWIPE_LOG_ERROR, "%s: bad status: 0x%x", __FUNCTION__, io_hdr.status );
+        nwipe_log(
+            NWIPE_LOG_ERROR, "%s: bad status (ata_op=0x%02x status=0x%02x)", __FUNCTION__, tf->command, io_hdr.status );
         errno = EBADE;
         return -1;
     }
 
     if( io_hdr.host_status )
     {
-        nwipe_log( NWIPE_LOG_ERROR, "%s: bad host status: 0x%x", __FUNCTION__, io_hdr.host_status );
+        nwipe_log( NWIPE_LOG_ERROR,
+                   "%s: bad host status (ata_op=0x%02x host_status=0x%04x)",
+                   __FUNCTION__,
+                   tf->command,
+                   io_hdr.host_status );
         errno = EBADE;
         return -1;
     }
 
-    dump_bytes( __FUNCTION__, "sb", sb, sizeof( sb ) );
+    dump_bytes( NWIPE_LOG_DEBUG, __FUNCTION__, "sb", sb, (int) sizeof( sb ) );
     if( !rw && data )
-        dump_bytes( __FUNCTION__, "incoming_data", data, (int) data_bytes );
+        dump_bytes( NWIPE_LOG_DEBUG, __FUNCTION__, "incoming_data", data, (int) data_bytes );
 
     if( io_hdr.driver_status && ( io_hdr.driver_status != SG_DRIVER_SENSE ) )
     {
-        nwipe_log( NWIPE_LOG_ERROR, "%s: bad driver status: 0x%x", __FUNCTION__, io_hdr.driver_status );
+        nwipe_log( NWIPE_LOG_ERROR,
+                   "%s: bad driver status (ata_op=0x%02x driver_status=0x%04x sb_len_wr=%u)",
+                   __FUNCTION__,
+                   tf->command,
+                   io_hdr.driver_status,
+                   (unsigned) io_hdr.sb_len_wr );
+        dump_bytes_line( NWIPE_LOG_ERROR, __FUNCTION__, "sb", sb, (int) sizeof( sb ) ); /* Just in case */
         errno = EBADE;
         return -1;
     }
 
     if( io_hdr.driver_status == 0 && io_hdr.status == 0 )
     {
+        if( data == NULL )
+        {
+            /* CK_COND was requested (not an IDENTIFY command), but no registers were returned */
+            nwipe_log( NWIPE_LOG_ERROR,
+                       "%s: missing sense data (ata_op=0x%02x sb_len_wr=%u)",
+                       __FUNCTION__,
+                       tf->command,
+                       (unsigned) io_hdr.sb_len_wr );
+            dump_bytes_line( NWIPE_LOG_ERROR, __FUNCTION__, "sb", sb, (int) sizeof( sb ) ); /* Just in case */
+            errno = EBADE;
+            return -1;
+        }
+
         tf->status = 0;
         tf->error = 0;
         return 0;
     }
 
+    if( ( sb[0] & 0x7f ) == 0x70 ) /* Fixed sense format (we only parse it for errors) */
+    {
+        tf_from_fixed_sense( tf, sb );
+
+        nwipe_log( NWIPE_LOG_DEBUG,
+                   "%s: fixed sense (ata_op=0x%02x stat=0x%02x err=0x%02x nsect=0x%02x lbal=0x%02x lbam=0x%02x "
+                   "lbah=0x%02x dev=0x%02x)",
+                   __FUNCTION__,
+                   tf->command,
+                   tf->status,
+                   tf->error,
+                   tf->lob.nsect,
+                   tf->lob.lbal,
+                   tf->lob.lbam,
+                   tf->lob.lbah,
+                   tf->dev );
+
+        if( !( tf->status & ( ATA_STAT_ERR | ATA_STAT_DRQ ) ) )
+        {
+            nwipe_log(
+                NWIPE_LOG_ERROR,
+                "%s: fixed sense without ATA error status (ata_op=0x%02x sb_len_wr=%u valid=%u stat=0x%02x err=0x%02x "
+                "key=0x%02x asc=0x%02x ascq=0x%02x)",
+                __FUNCTION__,
+                tf->command,
+                (unsigned) io_hdr.sb_len_wr,
+                (unsigned) !!( sb[0] & 0x80 ),
+                tf->status,
+                tf->error,
+                sb[2] & 0x0f,
+                sb[12],
+                sb[13] );
+            dump_bytes_line( NWIPE_LOG_ERROR, __FUNCTION__, "sb", sb, (int) sizeof( sb ) );
+            errno = EBADE;
+            return -1;
+        }
+
+        nwipe_log( NWIPE_LOG_ERROR,
+                   "%s: I/O error (fixed sense ata_op=0x%02x valid=%u stat=0x%02x err=0x%02x key=0x%02x asc=0x%02x "
+                   "ascq=0x%02x lbal=0x%02x)",
+                   __FUNCTION__,
+                   tf->command,
+                   (unsigned) !!( sb[0] & 0x80 ),
+                   tf->status,
+                   tf->error,
+                   sb[2] & 0x0f,
+                   sb[12],
+                   sb[13],
+                   tf->lob.lbal );
+        errno = EIO;
+        return -1;
+    }
+
+    /* Non-fixed format */
     desc = sb + 8;
 
     if( sb[0] != 0x72 || sb[7] < 14 || desc[0] != 0x09 || desc[1] < 0x0c )
     {
-        nwipe_log( NWIPE_LOG_ERROR, "%s: bad or missing sense data (behind RAID controller?)", __FUNCTION__ );
+        nwipe_log( NWIPE_LOG_ERROR,
+                   "%s: bad sense data (ata_op=0x%02x sb_len_wr=%u sb[0]=0x%02x sb[7]=%u desc[0]=0x%02x desc[1]=0x%02x "
+                   "key=0x%02x asc=0x%02x ascq=0x%02x)",
+                   __FUNCTION__,
+                   tf->command,
+                   (unsigned) io_hdr.sb_len_wr,
+                   sb[0],
+                   sb[7],
+                   desc[0],
+                   desc[1],
+                   sb[1] & 0x0f,
+                   sb[2],
+                   sb[3] );
+        dump_bytes_line( NWIPE_LOG_ERROR, __FUNCTION__, "sb", sb, (int) sizeof( sb ) );
         errno = EBADE;
         return -1;
     }
@@ -413,7 +566,7 @@ sg16( int fd, int rw, int dma, struct ata_tf* tf, void* data, unsigned int data_
     unsigned int len = desc[1] + 2, maxlen = sizeof( sb ) - 8 - 2;
     if( len > maxlen )
         len = maxlen;
-    dump_bytes( __FUNCTION__, "desc[]", desc, (int) len );
+    dump_bytes( NWIPE_LOG_DEBUG, __FUNCTION__, "desc[]", desc, (int) len );
 
     tf->is_lba48 = desc[2] & 1;
     tf->error = desc[3];
@@ -441,25 +594,36 @@ sg16( int fd, int rw, int dma, struct ata_tf* tf, void* data, unsigned int data_
     }
 
     nwipe_log( NWIPE_LOG_DEBUG,
-               "%s: ATA_%u stat=%02x err=%02x nsect=%02x lbal=%02x lbam=%02x lbah=%02x dev=%02x",
+               "%s: descriptor sense (ata_op=0x%02x ext=%u stat=0x%02x err=0x%02x nsect=0x%02x lbal=0x%02x lbam=0x%02x "
+               "lbah=0x%02x dev=0x%02x hob_nsect=0x%02x hob_lbal=0x%02x hob_lbam=0x%02x hob_lbah=0x%02x)",
                __FUNCTION__,
-               io_hdr.cmd_len,
+               tf->command,
+               (unsigned) tf->is_lba48,
                tf->status,
                tf->error,
                tf->lob.nsect,
                tf->lob.lbal,
                tf->lob.lbam,
                tf->lob.lbah,
-               tf->dev );
+               tf->dev,
+               tf->hob.nsect,
+               tf->hob.lbal,
+               tf->hob.lbam,
+               tf->hob.lbah );
 
     if( tf->status & ( ATA_STAT_ERR | ATA_STAT_DRQ ) )
     {
         nwipe_log( NWIPE_LOG_ERROR,
-                   "%s: I/O error, ata_op=0x%02x ata_status=0x%02x ata_error=0x%02x",
+                   "%s: I/O error (descriptor sense ata_op=0x%02x stat=0x%02x err=0x%02x key=0x%02x asc=0x%02x "
+                   "ascq=0x%02x lbal=0x%02x)",
                    __FUNCTION__,
                    tf->command,
                    tf->status,
-                   tf->error );
+                   tf->error,
+                   sb[1] & 0x0f,
+                   sb[2],
+                   sb[3],
+                   tf->lob.lbal );
         errno = EIO;
         return -1;
     }
@@ -612,7 +776,9 @@ static __u16* ata_identify( int fd )
 
 static int ata_sanitize_taskfile( int fd, __u16 feature, __u64 lba, __u8 nsect, struct hdio_taskfile* r_out )
 {
+    unsigned int timeout_secs = sanitize_action_timeout_secs;
     struct hdio_taskfile r;
+
     memset( &r, 0, sizeof( r ) );
 
     r.cmd_req = TASKFILE_CMD_REQ_NODATA;
@@ -646,10 +812,17 @@ static int ata_sanitize_taskfile( int fd, __u16 feature, __u64 lba, __u8 nsect, 
         r.lob.nsect = nsect;
     }
 
-    if( do_taskfile_cmd( fd, &r, 10 ) )
+    if( !nsect && feature == SANITIZE_STATUS_EXT ) /* Poll */
     {
+        timeout_secs = sanitize_poll_timeout_secs;
+    }
+
+    if( do_taskfile_cmd( fd, &r, timeout_secs ) )
+    {
+        int eno = errno;
         if( r_out )
             memcpy( r_out, &r, sizeof( r ) );
+        errno = eno;
         return -1;
     }
 
@@ -743,7 +916,7 @@ void nwipe_se_ata_destroy( nwipe_se_ata_ctx* san )
 
 /*
  * Probes for ATA Sanitize capabilities using IDENTIFY.
- * Sets san->cap_caps_valid to 1 if san_cap_* values are useable.
+ * Sets san->cap_caps_valid to 1 if san_cap_* values are usable.
  * Returns -1 only on failure sending the IDENTIFY command itself.
  */
 int nwipe_se_ata_sancap( nwipe_se_ata_ctx* san )
@@ -781,7 +954,8 @@ int nwipe_se_ata_sancap( nwipe_se_ata_ctx* san )
  * Polls the sanitize status using SANITIZE_STATUS_EXT.
  * Updates san->state and san->progress_* variables of the context.
  * Avoid hammering of device with calls in a tight loop, ensure delays.
- * Success returns 0; errors -1, logs and populates san->error_msg buffer.
+ * Success returns 0, error returns -errno or 1 if no errno was available.
+ * Error messages are written into the san->error_msg for GUI consumption.
  */
 int nwipe_se_ata_poll( nwipe_se_ata_ctx* san )
 {
@@ -791,7 +965,7 @@ int nwipe_se_ata_poll( nwipe_se_ata_ctx* san )
     {
         snprintf( san->error_msg, sizeof( san->error_msg ), "FD is not open" );
         nwipe_log( NWIPE_LOG_ERROR, "%s: %s: FD is not open", __FUNCTION__, san->device_path );
-        return -1;
+        return -EBADF;
     }
 
     struct hdio_taskfile r;
@@ -800,11 +974,13 @@ int nwipe_se_ata_poll( nwipe_se_ata_ctx* san )
     if( ata_sanitize_taskfile( san->fd, SANITIZE_STATUS_EXT, 0, 0, &r ) != 0 )
     {
         int eno = errno;
+        __u8 lbal = ( eno == EIO ) ? r.lob.lbal : 0;
 
-        if( r.lob.lbal == 1 )
+        if( lbal == 1 )
         {
             /* Device is in Sanitize Operation Failed state */
             san->state = NWIPE_SE_ATA_STATE_FAILURE;
+            san->state_raw = 0;
             san->progress_raw = 0;
             san->progress_pct = 0;
             return 0; /* Not a poll error, just a known device state */
@@ -815,7 +991,7 @@ int nwipe_se_ata_poll( nwipe_se_ata_ctx* san )
                   "%s (errno=%d, device reason: %s)",
                   strerror( eno ),
                   eno,
-                  lbal_to_error_str( r.lob.lbal ) );
+                  lbal_to_error_str( lbal ) );
 
         nwipe_log( NWIPE_LOG_ERROR,
                    "%s: %s: SANITIZE_STATUS_EXT failed: %s (errno=%d, device reason: %s)",
@@ -823,9 +999,9 @@ int nwipe_se_ata_poll( nwipe_se_ata_ctx* san )
                    san->device_path,
                    strerror( eno ),
                    eno,
-                   lbal_to_error_str( r.lob.lbal ) );
+                   lbal_to_error_str( lbal ) );
 
-        return -1;
+        return eno ? -eno : 1;
     }
 
     san->state_raw = r.hob.nsect;
@@ -840,14 +1016,12 @@ int nwipe_se_ata_poll( nwipe_se_ata_ctx* san )
     {
         san->state = NWIPE_SE_ATA_STATE_IN_PROGRESS;
         san->progress_raw = ( r.lob.lbam << 8 ) | r.lob.lbal;
-        san->progress_pct = ( (int) san->progress_raw * 100 ) / UINT16_MAX;
-        if( san->progress_pct > 100 )
-            san->progress_pct = 100;
+        san->progress_pct = ( (int) san->progress_raw * 100 ) / 65536;
     }
     else if( san->state_raw & SANITIZE_FLAG_OPERATION_SUCCEEDED )
     {
         san->state = NWIPE_SE_ATA_STATE_SUCCESS;
-        san->progress_raw = UINT16_MAX;
+        san->progress_raw = 0xFFFF;
         san->progress_pct = 100;
     }
     else
@@ -859,6 +1033,24 @@ int nwipe_se_ata_poll( nwipe_se_ata_ctx* san )
 
     return 0;
 } /* nwipe_se_ata_poll */
+
+/*
+ * Determines whether an ATA sanitize action destroys user data.
+ * Returns 1 for destructive actions, otherwise returns 0.
+ */
+int nwipe_se_ata_sanact_is_destructive( nwipe_se_ata_sanact_e act )
+{
+    switch( act )
+    {
+        case NWIPE_SE_ATA_SANACT_BLOCK_ERASE:
+        case NWIPE_SE_ATA_SANACT_CRYPTO_SCRAMBLE:
+        case NWIPE_SE_ATA_SANACT_OVERWRITE:
+            return 1;
+
+        default:
+            return 0;
+    }
+} /* nwipe_se_ata_sanact_is_destructive */
 
 /*
  * Run the san->planned_sanact sanitize operation.
@@ -881,6 +1073,26 @@ int nwipe_se_ata_sanitize( nwipe_se_ata_ctx* san )
         return -1;
     }
 
+    if( san->planned_sanact == NWIPE_SE_ATA_SANACT_OVERWRITE )
+    {
+        if( san->owpass > 15 )
+        {
+            snprintf( san->error_msg, sizeof( san->error_msg ), "Overwrite passes out of range" );
+            nwipe_log( NWIPE_LOG_ERROR,
+                       "%s: %s: Overwrite owpass=%d out of range [0-15]",
+                       __FUNCTION__,
+                       san->device_path,
+                       san->owpass );
+            return -1;
+        }
+    }
+    else
+    {
+        /* No effect, must be in zero state */
+        san->owpass = 0;
+        san->ovrpat = 0;
+    }
+
     switch( san->planned_sanact )
     {
         case NWIPE_SE_ATA_SANACT_CRYPTO_SCRAMBLE:
@@ -898,7 +1110,8 @@ int nwipe_se_ata_sanitize( nwipe_se_ata_ctx* san )
         case NWIPE_SE_ATA_SANACT_OVERWRITE:
             feature = SANITIZE_OVERWRITE_EXT;
             lba = ( (__u64) SANITIZE_OVERWRITE_KEY << 32 ) | san->ovrpat;
-            nsect = ( san->owpass & 0x0F ) | ( 1 << 4 ); /* Passes + Allow Failure Exit */
+            /* owpass is 0-based: 0=1 pass .. 15=16 passes; +1 to wire format where 0=16 passes */
+            nsect = ( ( san->owpass + 1 ) & 0x0F ) | ( 1 << 4 ); /* Passes + Allow Failure Exit */
             break;
 
         case NWIPE_SE_ATA_SANACT_FREEZE_LOCK:
@@ -926,20 +1139,11 @@ int nwipe_se_ata_sanitize( nwipe_se_ata_ctx* san )
             return -1;
     }
 
-    switch( san->planned_sanact )
-    {
-        case NWIPE_SE_ATA_SANACT_BLOCK_ERASE:
-        case NWIPE_SE_ATA_SANACT_CRYPTO_SCRAMBLE:
-        case NWIPE_SE_ATA_SANACT_OVERWRITE:
-            san->destructive_sanact = 1;
-            break;
-        default:
-            san->destructive_sanact = 0;
-            break;
-    }
+    /* Keep in sync, in case the caller did not set it themselves */
+    san->destructive_sanact = nwipe_se_ata_sanact_is_destructive( san->planned_sanact );
 
     nwipe_log( NWIPE_LOG_INFO,
-               "%s: issuing SANITIZE feat=0x%04x lba=0x%012llx nsect=%u",
+               "%s: issuing SANITIZE feat=0x%04x lba=0x%012llx nsect=0x%02x",
                san->device_path,
                (unsigned) feature,
                (unsigned long long) lba,
@@ -951,13 +1155,14 @@ int nwipe_se_ata_sanitize( nwipe_se_ata_ctx* san )
     if( ata_sanitize_taskfile( san->fd, feature, lba, nsect, &r ) != 0 )
     {
         int eno = errno;
+        __u8 lbal = ( eno == EIO ) ? r.lob.lbal : 0;
 
         snprintf( san->error_msg,
                   sizeof( san->error_msg ),
                   "%s (errno=%d, device reason: %s)",
                   strerror( eno ),
                   eno,
-                  lbal_to_error_str( r.lob.lbal ) );
+                  lbal_to_error_str( lbal ) );
 
         nwipe_log( NWIPE_LOG_ERROR,
                    "%s: %s: SANITIZE failed: %s (errno=%d, device reason: %s)",
@@ -965,7 +1170,7 @@ int nwipe_se_ata_sanitize( nwipe_se_ata_ctx* san )
                    san->device_path,
                    strerror( eno ),
                    eno,
-                   lbal_to_error_str( r.lob.lbal ) );
+                   lbal_to_error_str( lbal ) );
 
         return -1;
     }
