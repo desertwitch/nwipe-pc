@@ -19,10 +19,7 @@ jobs:
       contents: read
       packages: write
     env:
-      PLATFORMS: >-
-        ${{ (github.ref == 'refs/heads/devel' && github.event_name == 'push')
-            && 'linux/amd64'
-            || 'linux/amd64,linux/arm64,linux/arm/v7,linux/386' }}
+      PLATFORMS: 'linux/amd64,linux/arm64,linux/arm/v7,linux/386'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
