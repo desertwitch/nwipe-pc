@@ -337,7 +337,7 @@ int read_system_datetime( char* year, char* month, char* day, char* hours, char*
     fp = popen( "date +%Y", "r" );
     if( fp == NULL )
     {
-        nwipe_log( NWIPE_LOG_ERROR, "Failed to obtain system year using commmand = date +%Y" );
+        nwipe_log( NWIPE_LOG_ERROR, "Failed to obtain system year using command = date +%Y" );
     }
     else
     {
@@ -647,7 +647,7 @@ int write_system_datetime( char* year, char* month, char* day, char* hours, char
         }
         else
         {
-            nwipe_log( NWIPE_LOG_INFO, "Date/time succesfully writen to system using command = %s", cmd );
+            nwipe_log( NWIPE_LOG_INFO, "Date/time successfully written to system using command = %s", cmd );
         }
     }
 

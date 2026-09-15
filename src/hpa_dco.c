@@ -354,7 +354,7 @@ int hpa_dco_status( nwipe_context_t* ptr )
             {
                 c->HPA_status = HPA_UNKNOWN;
                 nwipe_log( NWIPE_LOG_WARNING,
-                           "[UNKNOWN] We can't find the HPA line, has hdparm ouput unknown/changed? %s",
+                           "[UNKNOWN] We can't find the HPA line, has hdparm output unknown/changed? %s",
                            c->device_name );
             }
 
@@ -762,7 +762,7 @@ u64 nwipe_read_dco_real_max_sectors( char* device )
     /* Zero the hex output buffer */
     memset( sense_buffer_hex, 0, sizeof( sense_buffer_hex ) );
 
-    int fd;  // file descripter
+    int fd;  // file descriptor
 
     if( ( fd = open( device, O_RDWR ) ) < 0 )
     {
