@@ -6931,7 +6931,7 @@ void nwipe_gui_set_system_year( void )
     fp = popen( "date +%Y", "r" );
     if( fp == NULL )
     {
-        nwipe_log( NWIPE_LOG_INFO, "popen:Failed to retrieve date +%Y %s", date_buffer );
+        nwipe_log( NWIPE_LOG_INFO, "popen:Failed to retrieve date +%%Y %s", date_buffer );
         mvwprintw( main_window, yy + 4, tab1, "popen:date command failed retrieving year" );
     }
 
@@ -7082,7 +7082,7 @@ void nwipe_gui_set_system_month( void )
     fp = popen( "date +%m", "r" );
     if( fp == NULL )
     {
-        nwipe_log( NWIPE_LOG_INFO, "popen:Failed to retrieve date +%m %s", date_buffer );
+        nwipe_log( NWIPE_LOG_INFO, "popen:Failed to retrieve date +%%m %s", date_buffer );
         mvwprintw( main_window, yy + 4, tab1, "popen:date command failed retrieving month" );
     }
 
@@ -7234,7 +7234,7 @@ void nwipe_gui_set_system_day( void )
     fp = popen( "date +%d", "r" );
     if( fp == NULL )
     {
-        nwipe_log( NWIPE_LOG_INFO, "popen:Failed to retrieve date +%d %s", date_buffer );
+        nwipe_log( NWIPE_LOG_INFO, "popen:Failed to retrieve date +%%d %s", date_buffer );
         mvwprintw( main_window, yy + 4, tab1, "popen:date command failed retrieving day of month" );
     }
 
@@ -7388,7 +7388,7 @@ void nwipe_gui_set_system_hour( void )
     fp = popen( "date +%H", "r" );
     if( fp == NULL )
     {
-        nwipe_log( NWIPE_LOG_INFO, "popen:Failed to retrieve date +%H %s", date_buffer );
+        nwipe_log( NWIPE_LOG_INFO, "popen:Failed to retrieve date +%%H %s", date_buffer );
         mvwprintw( main_window, yy + 4, tab1, "popen:date command failed retrieving hour" );
     }
 
@@ -7540,7 +7540,7 @@ void nwipe_gui_set_system_minute( void )
     fp = popen( "date +%M", "r" );
     if( fp == NULL )
     {
-        nwipe_log( NWIPE_LOG_INFO, "popen:Failed to retrieve date +%M %s", date_buffer );
+        nwipe_log( NWIPE_LOG_INFO, "popen:Failed to retrieve date +%%M %s", date_buffer );
         mvwprintw( main_window, yy + 4, tab1, "popen:date command failed retrieving minute" );
     }
 
