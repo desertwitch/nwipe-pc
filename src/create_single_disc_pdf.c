@@ -550,7 +550,7 @@ int create_single_disc_pdf( nwipe_thread_data_ptr_t* ptrx, nwipe_context_t* ptr 
                       137,
                       PDF_BLACK );
 
-        /* meaning of abreviation DDNSHPA */
+        /* meaning of abbreviation DDNSHPA */
         if( c->HPA_status == HPA_NOT_SUPPORTED_BY_DRIVE )
         {
             pdf_add_text(

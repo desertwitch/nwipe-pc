@@ -916,7 +916,7 @@ void nwipe_se_ata_destroy( nwipe_se_ata_ctx* san )
 
 /*
  * Probes for ATA Sanitize capabilities using IDENTIFY.
- * Sets san->cap_caps_valid to 1 if san_cap_* values are useable.
+ * Sets san->cap_caps_valid to 1 if san_cap_* values are usable.
  * Returns -1 only on failure sending the IDENTIFY command itself.
  */
 int nwipe_se_ata_sancap( nwipe_se_ata_ctx* san )

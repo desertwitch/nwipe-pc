@@ -196,7 +196,7 @@ void* nwipe_zero( void* ptr )
     /* get current time at the start of the wipe in seconds since epoch  */
     time( &c->start_time );
 
-    /* get the current time (high resolution, nanosecond or millsecond) */
+    /* get the current time (high resolution, nanosecond or millisecond) */
     clock_gettime( CLOCK_MONOTONIC, &c->start_clock );
 
     /* set wipe in progress flag for GUI */
@@ -218,7 +218,7 @@ void* nwipe_zero( void* ptr )
     time( &c->end_time );
 
     /* ----------------------------------------------- */
-    /* get current time at the end of the wipe (high resolution) nanosecond/millsecond
+    /* get current time at the end of the wipe (high resolution) nanosecond/millisecond
      */
     clock_gettime( CLOCK_MONOTONIC, &c->end_clock );
     c->duration = c->end_time - c->start_time;  // Legacy integer fallback
@@ -256,7 +256,7 @@ void* nwipe_one( void* ptr )
     /* get current time at the start of the wipe in seconds since epoch  */
     time( &c->start_time );
 
-    /* get the current time (high resolution, nanosecond or millsecond) */
+    /* get the current time (high resolution, nanosecond or millisecond) */
     clock_gettime( CLOCK_MONOTONIC, &c->start_clock );
 
     /* set wipe in progress flag for GUI */
@@ -278,7 +278,7 @@ void* nwipe_one( void* ptr )
     time( &c->end_time );
 
     /* ----------------------------------------------- */
-    /* get current time at the end of the wipe (high resolution) nanosecond/millsecond
+    /* get current time at the end of the wipe (high resolution) nanosecond/millisecond
      */
     clock_gettime( CLOCK_MONOTONIC, &c->end_clock );
     c->duration = c->end_time - c->start_time;  // Legacy integer fallback
@@ -317,7 +317,7 @@ void* nwipe_verify_zero( void* ptr )
     /* get current time at the start of the wipe in seconds since epoch  */
     time( &c->start_time );
 
-    /* get the current time (high resolution, nanosecond or millsecond) */
+    /* get the current time (high resolution, nanosecond or millisecond) */
     clock_gettime( CLOCK_MONOTONIC, &c->start_clock );
 
     /* set wipe in progress flag for GUI */
@@ -336,7 +336,7 @@ void* nwipe_verify_zero( void* ptr )
     time( &c->end_time );
 
     /* ----------------------------------------------- */
-    /* get current time at the end of the wipe (high resolution) nanosecond/millsecond
+    /* get current time at the end of the wipe (high resolution) nanosecond/millisecond
      */
     clock_gettime( CLOCK_MONOTONIC, &c->end_clock );
     c->duration = c->end_time - c->start_time;  // Legacy integer fallback
@@ -374,7 +374,7 @@ void* nwipe_verify_one( void* ptr )
     /* get current time at the start of the wipe in seconds since epoch  */
     time( &c->start_time );
 
-    /* get the current time (high resolution, nanosecond or millsecond) */
+    /* get the current time (high resolution, nanosecond or millisecond) */
     clock_gettime( CLOCK_MONOTONIC, &c->start_clock );
 
     /* set wipe in progress flag for GUI */
@@ -393,7 +393,7 @@ void* nwipe_verify_one( void* ptr )
     time( &c->end_time );
 
     /* ----------------------------------------------- */
-    /* get current time at the end of the wipe (high resolution) nanosecond/millsecond
+    /* get current time at the end of the wipe (high resolution) nanosecond/millisecond
      */
     clock_gettime( CLOCK_MONOTONIC, &c->end_clock );
     c->duration = c->end_time - c->start_time;  // Legacy integer fallback
@@ -432,7 +432,7 @@ void* nwipe_dod522022m( void* ptr )
     /* get current time at the start of the wipe in seconds since epoch  */
     time( &c->start_time );
 
-    /* get the current time (high resolution, nanosecond or millsecond) */
+    /* get the current time (high resolution, nanosecond or millisecond) */
     clock_gettime( CLOCK_MONOTONIC, &c->start_clock );
 
     /* set wipe in progress flag for GUI */
@@ -494,7 +494,7 @@ void* nwipe_dod522022m( void* ptr )
     time( &c->end_time );
 
     /* ----------------------------------------------- */
-    /* get current time at the end of the wipe (high resolution) nanosecond/millsecond
+    /* get current time at the end of the wipe (high resolution) nanosecond/millisecond
      */
     clock_gettime( CLOCK_MONOTONIC, &c->end_clock );
     c->duration = c->end_time - c->start_time;  // Legacy integer fallback
@@ -534,7 +534,7 @@ void* nwipe_dodshort( void* ptr )
     /* get current time at the start of the wipe in seconds since epoch  */
     time( &c->start_time );
 
-    /* get the current time (high resolution, nanosecond or millsecond) */
+    /* get the current time (high resolution, nanosecond or millisecond) */
     clock_gettime( CLOCK_MONOTONIC, &c->start_clock );
 
     /* set wipe in progress flag for GUI */
@@ -589,7 +589,7 @@ void* nwipe_dodshort( void* ptr )
     time( &c->end_time );
 
     /* ----------------------------------------------- */
-    /* get current time at the end of the wipe (high resolution) nanosecond/millsecond
+    /* get current time at the end of the wipe (high resolution) nanosecond/millisecond
      */
     clock_gettime( CLOCK_MONOTONIC, &c->end_clock );
     c->duration = c->end_time - c->start_time;  // Legacy integer fallback
@@ -628,7 +628,7 @@ void* nwipe_gutmann( void* ptr )
     /* get current time at the start of the wipe in seconds since epoch  */
     time( &c->start_time );
 
-    /* get the current time (high resolution, nanosecond or millsecond) */
+    /* get the current time (high resolution, nanosecond or millisecond) */
     clock_gettime( CLOCK_MONOTONIC, &c->start_clock );
 
     /* set wipe in progress flag for GUI */
@@ -751,7 +751,7 @@ void* nwipe_gutmann( void* ptr )
     time( &c->end_time );
 
     /* ----------------------------------------------- */
-    /* get current time at the end of the wipe (high resolution) nanosecond/millsecond
+    /* get current time at the end of the wipe (high resolution) nanosecond/millisecond
      */
     clock_gettime( CLOCK_MONOTONIC, &c->end_clock );
     c->duration = c->end_time - c->start_time;  // Legacy integer fallback
@@ -794,7 +794,7 @@ void* nwipe_ops2( void* ptr )
     /* get current time at the start of the wipe in seconds since epoch  */
     time( &c->start_time );
 
-    /* get the current time (high resolution, nanosecond or millsecond) */
+    /* get the current time (high resolution, nanosecond or millisecond) */
     clock_gettime( CLOCK_MONOTONIC, &c->start_clock );
 
     /* set wipe in progress flag for GUI */
@@ -946,7 +946,7 @@ void* nwipe_ops2( void* ptr )
     time( &c->end_time );
 
     /* ----------------------------------------------- */
-    /* get current time at the end of the wipe (high resolution) nanosecond/millsecond
+    /* get current time at the end of the wipe (high resolution) nanosecond/millisecond
      */
     clock_gettime( CLOCK_MONOTONIC, &c->end_clock );
     c->duration = c->end_time - c->start_time;  // Legacy integer fallback
@@ -979,7 +979,7 @@ void* nwipe_is5enh( void* ptr )
     /* get current time at the start of the wipe in seconds since epoch  */
     time( &c->start_time );
 
-    /* get the current time (high resolution, nanosecond or millsecond) */
+    /* get the current time (high resolution, nanosecond or millisecond) */
     clock_gettime( CLOCK_MONOTONIC, &c->start_clock );
 
     c->wipe_status = 1;
@@ -997,7 +997,7 @@ void* nwipe_is5enh( void* ptr )
     time( &c->end_time );
 
     /* ----------------------------------------------- */
-    /* get current time at the end of the wipe (high resolution) nanosecond/millsecond
+    /* get current time at the end of the wipe (high resolution) nanosecond/millisecond
      */
     clock_gettime( CLOCK_MONOTONIC, &c->end_clock );
     c->duration = c->end_time - c->start_time;  // Legacy integer fallback
@@ -1036,7 +1036,7 @@ void* nwipe_random( void* ptr )
     /* get current time at the start of the wipe in seconds since epoch  */
     time( &c->start_time );
 
-    /* get the current time (high resolution, nanosecond or millsecond) */
+    /* get the current time (high resolution, nanosecond or millisecond) */
     clock_gettime( CLOCK_MONOTONIC, &c->start_clock );
 
     /* set wipe in progress flag for GUI */
@@ -1055,7 +1055,7 @@ void* nwipe_random( void* ptr )
     time( &c->end_time );
 
     /* ----------------------------------------------- */
-    /* get current time at the end of the wipe (high resolution) nanosecond/millsecond
+    /* get current time at the end of the wipe (high resolution) nanosecond/millisecond
      */
     clock_gettime( CLOCK_MONOTONIC, &c->end_clock );
     c->duration = c->end_time - c->start_time;  // Legacy integer fallback
@@ -1096,7 +1096,7 @@ void* nwipe_bruce7( void* ptr )
     /* get current time at the start of the wipe in seconds since epoch  */
     time( &c->start_time );
 
-    /* get the current time (high resolution, nanosecond or millsecond) */
+    /* get the current time (high resolution, nanosecond or millisecond) */
     clock_gettime( CLOCK_MONOTONIC, &c->start_clock );
 
     /* Set wipe in progress flag for GUI */
@@ -1126,7 +1126,7 @@ void* nwipe_bruce7( void* ptr )
     time( &c->end_time );
 
     /* ----------------------------------------------- */
-    /* get current time at the end of the wipe (high resolution) nanosecond/millsecond
+    /* get current time at the end of the wipe (high resolution) nanosecond/millisecond
      */
     clock_gettime( CLOCK_MONOTONIC, &c->end_clock );
     c->duration = c->end_time - c->start_time;  // Legacy integer fallback
@@ -1167,7 +1167,7 @@ void* nwipe_bmb( void* ptr )
     /* get current time at the start of the wipe in seconds since epoch  */
     time( &c->start_time );
 
-    /* get the current time (high resolution, nanosecond or millsecond) */
+    /* get the current time (high resolution, nanosecond or millisecond) */
     clock_gettime( CLOCK_MONOTONIC, &c->start_clock );
 
     c->wipe_status = 1;
@@ -1191,7 +1191,7 @@ void* nwipe_bmb( void* ptr )
     time( &c->end_time );
 
     /* ----------------------------------------------- */
-    /* get current time at the end of the wipe (high resolution) nanosecond/millsecond
+    /* get current time at the end of the wipe (high resolution) nanosecond/millisecond
      */
     clock_gettime( CLOCK_MONOTONIC, &c->end_clock );
     c->duration = c->end_time - c->start_time;  // Legacy integer fallback

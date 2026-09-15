@@ -68,7 +68,7 @@ int nwipe_options_parse( int argc, char** argv )
     /* The list of acceptable short options. */
     char nwipe_options_short[] = "Vvhl:P:m:p:qr:e:";
 
-    /* Used when reading value fron nwipe.conf */
+    /* Used when reading value from nwipe.conf */
     const char* read_value = NULL;
 
     int ret;
@@ -369,7 +369,7 @@ int nwipe_options_parse( int argc, char** argv )
 
                 if( strcmp( nwipe_options_long[i].name, "autonuke" ) == 0 )
                 {
-                    /* check for the full option name, as getopt_long() allows abreviations and can lead to unintended
+                    /* check for the full option name, as getopt_long() allows abbreviations and can lead to unintended
                      * consequences when the user makes a typo */
                     if( strcmp( argv[optind - 1], "--autonuke" ) == 0 )
                     {
@@ -388,7 +388,7 @@ int nwipe_options_parse( int argc, char** argv )
 
                 if( strcmp( nwipe_options_long[i].name, "autopoweroff" ) == 0 )
                 {
-                    /* check for the full option name, as getopt_long() allows abreviations and can lead to unintended
+                    /* check for the full option name, as getopt_long() allows abbreviations and can lead to unintended
                      * consequences when the user makes a typo */
                     if( strcmp( argv[optind - 1], "--autopoweroff" ) == 0 )
                     {
@@ -407,7 +407,7 @@ int nwipe_options_parse( int argc, char** argv )
 
                 if( strcmp( nwipe_options_long[i].name, "help" ) == 0 )
                 {
-                    /* check for the full option name, as getopt_long() allows abreviations and can lead to unintended
+                    /* check for the full option name, as getopt_long() allows abbreviations and can lead to unintended
                      * consequences when the user makes a typo */
                     if( strcmp( argv[optind - 1], "--help" ) == 0 )
                     {
@@ -426,7 +426,7 @@ int nwipe_options_parse( int argc, char** argv )
 
                 if( strcmp( nwipe_options_long[i].name, "noblank" ) == 0 )
                 {
-                    /* check for the full option name, as getopt_long() allows abreviations and can lead to unintended
+                    /* check for the full option name, as getopt_long() allows abbreviations and can lead to unintended
                      * consequences when the user makes a typo */
                     if( strcmp( argv[optind - 1], "--noblank" ) == 0 )
                     {
@@ -464,7 +464,7 @@ int nwipe_options_parse( int argc, char** argv )
 
                 if( strcmp( nwipe_options_long[i].name, "nowait" ) == 0 )
                 {
-                    /* check for the full option name, as getopt_long() allows abreviations and can lead to unintended
+                    /* check for the full option name, as getopt_long() allows abbreviations and can lead to unintended
                      * consequences when the user makes a typo */
                     if( strcmp( argv[optind - 1], "--nowait" ) == 0 )
                     {
@@ -483,7 +483,7 @@ int nwipe_options_parse( int argc, char** argv )
 
                 if( strcmp( nwipe_options_long[i].name, "nosignals" ) == 0 )
                 {
-                    /* check for the full option name, as getopt_long() allows abreviations and can lead to unintended
+                    /* check for the full option name, as getopt_long() allows abbreviations and can lead to unintended
                      * consequences when the user makes a typo */
                     if( strcmp( argv[optind - 1], "--nosignals" ) == 0 )
                     {
@@ -526,7 +526,7 @@ int nwipe_options_parse( int argc, char** argv )
 
                 if( strcmp( nwipe_options_long[i].name, "nogui" ) == 0 )
                 {
-                    /* check for the full option name, as getopt_long() allows abreviations and can lead to unintended
+                    /* check for the full option name, as getopt_long() allows abbreviations and can lead to unintended
                      * consequences when the user makes a typo */
                     if( strcmp( argv[optind - 1], "--nogui" ) == 0 )
                     {
@@ -546,7 +546,7 @@ int nwipe_options_parse( int argc, char** argv )
 
                 if( strcmp( nwipe_options_long[i].name, "quiet" ) == 0 )
                 {
-                    /* check for the full option name, as getopt_long() allows abreviations and can lead to unintended
+                    /* check for the full option name, as getopt_long() allows abbreviations and can lead to unintended
                      * consequences when the user makes a typo */
                     if( strcmp( argv[optind - 1], "--quiet" ) == 0 )
                     {
@@ -565,7 +565,7 @@ int nwipe_options_parse( int argc, char** argv )
 
                 if( strcmp( nwipe_options_long[i].name, "verbose" ) == 0 )
                 {
-                    /* check for the full option name, as getopt_long() allows abreviations and can lead to unintended
+                    /* check for the full option name, as getopt_long() allows abbreviations and can lead to unintended
                      * consequences when the user makes a typo */
                     if( strcmp( argv[optind - 1], "--verbose" ) == 0 )
                     {
@@ -621,7 +621,7 @@ int nwipe_options_parse( int argc, char** argv )
 
                 if( strcmp( nwipe_options_long[i].name, "directio" ) == 0 )
                 {
-                    /* check for the full option name, as getopt_long() allows abreviations and can lead to unintended
+                    /* check for the full option name, as getopt_long() allows abbreviations and can lead to unintended
                      * consequences when the user makes a typo */
                     if( strcmp( argv[optind - 1], "--directio" ) == 0 )
                     {
@@ -640,7 +640,7 @@ int nwipe_options_parse( int argc, char** argv )
 
                 if( strcmp( nwipe_options_long[i].name, "cachedio" ) == 0 )
                 {
-                    /* check for the full option name, as getopt_long() allows abreviations and can lead to unintended
+                    /* check for the full option name, as getopt_long() allows abbreviations and can lead to unintended
                      * consequences when the user makes a typo */
                     if( strcmp( argv[optind - 1], "--cachedio" ) == 0 )
                     {

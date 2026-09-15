@@ -258,7 +258,7 @@ void nwipe_se_nvme_destroy( nwipe_se_nvme_ctx* san )
 
 /*
  * Probes for NVMe Sanitize capabilities using nvme_identify_ctrl().
- * Sets san->cap_caps_valid to 1 if san_cap_* values are useable.
+ * Sets san->cap_caps_valid to 1 if san_cap_* values are usable.
  * Returns -1 only on an allocation- or command-rejected failure.
  */
 int nwipe_se_nvme_sancap( nwipe_se_nvme_ctx* san )

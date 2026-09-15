@@ -142,7 +142,7 @@ void pdf_add_text_status_of_erasure( float, float, float, float, float, float, f
  * @param flag indicating whether this is for a single disc PDF or a system multidisc PDF.
  * flag defined by PDF_TYPE_SINGLE_DISC and PDF_TYPE_MULTI_DISC. The icon displayed differs
  * depending on the type of PDF. A multi disc PDF requires all drives to have been
- * succesfully erased before a green tick is displayed in the top right corner.
+ * successfully erased before a green tick is displayed in the top right corner.
  */
 void pdf_display_status_icon( size_t, void* );
 

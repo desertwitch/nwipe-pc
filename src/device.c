@@ -1103,7 +1103,7 @@ static void nwipe_normalize_serial( char* serial )
         {
             *dst++ = (char) ch;
         }
-        /* Alle remaining control characters will be dropped ( >0x7F) */
+        /* All remaining control characters will be dropped ( >0x7F) */
     }
 
     *dst = '\0';
