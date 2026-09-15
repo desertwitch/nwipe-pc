@@ -57,12 +57,12 @@ It was created to run the DBAN erase engine on any Linux distribution, with bett
   - [What's new?](#whats-new)
   - [Erasure methods](#erasure-methods)
   - [PRNG engines](#prng-engines)
-  - [I/O subsystem and Direct I/O](#io-subsystem-and-direct-io)
+  - [I/O subsystem](#io-subsystem)
     - [Large, aligned I/O buffers](#large-aligned-io-buffers)
     - [I/O mode selection](#io-mode-selection)
     - [Sync behaviour](#sync-behaviour)
-  - [SSD/NVMe considerations](#ssdnvme-considerations)
-  - [Compiling \& installing](#compiling--installing)
+  - [ATA (SSD) \& NVMe Secure Erase](#ata-ssd--nvme-secure-erase)
+  - [Compiling \& Installing](#compiling--installing)
     - [Dependencies](#dependencies)
     - [Debian \& Ubuntu prerequisites](#debian--ubuntu-prerequisites)
     - [Fedora / RHEL / CentOS Stream prerequisites](#fedora--rhel--centos-stream-prerequisites)
@@ -85,7 +85,7 @@ It was created to run the DBAN erase engine on any Linux distribution, with bett
 > [!WARNING]
 > For some of nwipe’s features such as SMART data in the PDF certificate, HPA/DCO detection and other functions, nwipe uses external tools: **smartmontools** and **hdparm**.
 > Both `hdparm` and `smartmontools` are **mandatory** if you want all nwipe features to be fully available.
-> If they are not installed, nwipe will log a warning and continue, but many important features will not work as intended.
+> If they are not installed **at runtime**, nwipe will log a warning and continue, but many important features will not work as intended.
 
 ![Example wipe](https://github.com/martijnvanbrummelen/nwipe/raw/master/images/example_wipe.gif)
 
@@ -95,13 +95,9 @@ It was created to run the DBAN erase engine on any Linux distribution, with bett
 
 *The screenshot above shows nwipe’s three–page PDF certificate. Drive-identifying data such as serial numbers has been anonymised using the `-q` / `--quiet` option.*
 
----
-
 ## What's new?
 
 Refer to our [CHANGELOG](./CHANGELOG.md) document to see exactly what's changed.
-
----
 
 ## Erasure methods
 
@@ -145,20 +141,10 @@ The user can select from a variety of recognised secure erase methods, including
 
 - **Standalone Secure Erase (Block, Crypto Scramble, Overwrite)** *(new in v0.43)*  
   Performs interactive, standalone, hardware-native drive sanitization—utilizing the drive's native ATA/NVMe block erase, cryptographic scramble, or pattern overwriting directly from nwipe's GUI.
----
 
 ## PRNG engines
 
 nwipe includes multiple pseudorandom number generators (PRNGs) for methods that require random data:
-
-- **SplitMix64** *(new in v0.41)*  
-  General-purpose non-cryptographic generator, optimized for 64-bit architectures.
-
-- **ChaCha20 (CSPRNG)** *(new in v0.41)*  
-  Cryptographically secure, no special hardware requirements, as used worldwide in TLS and SSH.
-
-- **AES-256-CTR (CSPRNG)** *(new in v0.40)*  
-  Cryptographically secure, high–throughput counter-mode stream cipher, using hardware AES-NI where available.
 
 - **XORoshiro-256**  
   Very fast, high–quality non-cryptographic generator, suitable for high–volume random wiping where a CSPRNG is not strictly required.
@@ -175,11 +161,18 @@ nwipe includes multiple pseudorandom number generators (PRNGs) for methods that 
 - **Mersenne Twister**  
   Well-known high–period PRNG.
 
+- **AES-256-CTR (CSPRNG)** *(new in v0.40)*  
+  Cryptographically secure, high–throughput counter-mode stream cipher, using hardware AES-NI where available.
+
+- **SplitMix64** *(new in v0.41)*  
+  General-purpose non-cryptographic generator, optimized for 64-bit architectures.
+
+- **ChaCha20 (CSPRNG)** *(new in v0.41)*  
+  Cryptographically secure, no special hardware requirements, as used worldwide in TLS and SSH.
+
 These PRNGs can be selected at runtime (see the man page for the exact CLI options) and are used by any wipe method that requires random patterns (for example PRNG Stream, Schneier or BMB21 random passes).
 
----
-
-## I/O subsystem and Direct I/O
+## I/O subsystem
 
 Starting with v0.40 the nwipe I/O layer has been significantly modernised:
 
@@ -228,11 +221,9 @@ In **Direct I/O** mode (`--directio` / `--io-mode=direct`), periodic sync is dis
 
 See the `nwipe(8)` man page for detailed `--sync` semantics and examples.
 
----
+## ATA (SSD) & NVMe Secure Erase
 
-## SSD/NVMe considerations
-
-The (upcoming) **v0.43** release introduces several major improvements.
+The _v0.43_ release introduces several major improvements.
 
 Nwipe is now **able to sanitize ATA and NVMe devices** using native hardware capabilities.
 
@@ -246,7 +237,7 @@ For secure flash storage sanitization, the firmware can implement native secure 
 
 These hardware methods ensure that even such non-accessible parts of a device are safely erased.
 
-Nwipe is now able to detect them and will offer to utilize secure erase methods from within the GUI:
+Nwipe is now able to detect these and will offer to utilize secure erase methods from within the GUI:
 
 ![Example NVMe](images/example_nvme.gif)
 
@@ -268,16 +259,14 @@ For devices that cannot be detected or as an alternative, the previous guidance 
 
 A list of common SSD vendor tools and guidance can be found in the separate [SSD Guide](ssd-guide.md).
 
----
-
-## Compiling & installing
+## Compiling & Installing
 
 For development work, see the [Hacking](#hacking) section below.
 For a **bootable image** with the latest nwipe master that you can write to a USB stick or CD/DVD, see [Quick & easy, USB bootable version](#quick--easy-usb-bootable-version-of-nwipe-master-for-x86_64-systems).
 
 ### Dependencies
 
-`nwipe` requires the following libraries:
+`nwipe` requires **at compile-time** the following libraries:
 
 * `ncurses`
 * `pthreads`
@@ -285,11 +274,11 @@ For a **bootable image** with the latest nwipe master that you can write to a US
 * `libconfig`
 * `libnvme`
 
-`nwipe` also requires the following program and will abort with a warning if not found:
+`nwipe` requires **at runtime** and will abort with a warning if not found:
 
 * **hdparm** (as of current master and v0.35+)
 
-The following tools are optional but **strongly recommended**:
+The following auxiliary tools are optional but **strongly recommended**:
 
 * `dmidecode`
 * `coreutils` (for `readlink`)
@@ -438,8 +427,6 @@ or simply:
 sudo nwipe
 ```
 
----
-
 ## Hacking
 
 If you intend to submit patches or pull requests, we recommend enabling full warnings in your development build.
@@ -474,8 +461,6 @@ To rebuild a "release-like" binary with normal optimisations after development:
 make
 sudo make install
 ```
-
----
 
 ## Automating download and compilation (Debian-based distros)
 
@@ -538,8 +523,6 @@ If you already have nwipe from your distro’s repo installed, remember:
 * `nwipe` → runs the packaged version in your `$PATH`
 * `./nwipe` in `~/nwipe_master/nwipe/src` → runs the freshly built master
 
----
-
 ## Quick & easy, USB bootable version of nwipe master for x86_64 systems
 
 If you prefer a bootable image containing the latest nwipe master, use **ShredOS**:
@@ -561,8 +544,6 @@ It is provided as:
 
 See the ShredOS README for detailed instructions on downloading and writing the image.
 
----
-
 ## Which Linux distro uses the latest nwipe?
 
 You can see an overview at:
@@ -581,8 +562,6 @@ Distributions known to include nwipe:
 
 If you know of other distributions that ship nwipe, please let us know or send a PR updating this README.
 
----
-
 ## Bugs
 
 Bugs, feature requests, and pull requests are welcome on GitHub:
@@ -595,8 +574,6 @@ Please include:
 * the nwipe version (or git commit hash),
 * hardware details (especially for I/O-related issues),
 * log output and command line options used.
-
----
 
 ## License
 
