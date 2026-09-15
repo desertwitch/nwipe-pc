@@ -1,4 +1,10 @@
-﻿# Guide for the cancellation of solid state media (Sata / SAS / NVME)
+﻿> [!NOTE]
+> This document was written before ATA/NVMe secure erase was added as part of Nwipe _v0.43_.
+> Its information is still generally valid, but you can now use the
+> [**built-in Nwipe features**](README.md#ata-ssd--nvme-secure-erase) as an alternative to
+> the vendor-specific tooling described in this guide.
+
+# Guide for the cancellation of solid state media (Sata / SAS / NVME)
 
 # Index
 1. Disclaimer & Warning
