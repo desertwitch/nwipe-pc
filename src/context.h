@@ -123,7 +123,7 @@ typedef struct nwipe_speedring_t_
 // Arbitrary length, so far most paths don't exceed about 25 characters
 #define MAX_HWMON_PATH_LENGTH 100
 
-// 20 chracters for serial number plus null Byte
+// 20 characters for serial number plus null Byte
 #define NWIPE_SERIALNUMBER_LENGTH 20
 
 // UUID size
@@ -278,7 +278,7 @@ typedef struct nwipe_context_t_
                                      // 0: undefined, not yet set
                                      // 1: secure erase, operating in manual STANDALONE
                                      // 2: secure erase, part of a method starting before everything else.(PRE_CHAINED)
-                                     // 3: secure erase, part of a method starting after everthing else. (POST_CHAINED)
+                                     // 3: secure erase, part of a method starting after everything else. (POST_CHAINED)
     nwipe_secure_erase_type_t secure_erase_type; /* Secure Erase: ATA or NVMe */
     nwipe_secure_erase_method_t secure_erase_method; /* Secure Erase: Method */
     nwipe_secure_erase_status_t

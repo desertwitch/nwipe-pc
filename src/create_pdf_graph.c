@@ -68,7 +68,7 @@ create_pdf_speed_profile_page( nwipe_misc_thread_data_t* d, size_t pdf_type, siz
         pdf_display_status_icon( PDF_TYPE_SINGLE_DISC, NULL );
     }
 
-    /* For multidisc the smart data starts slighlty lower to accomodate
+    /* For multidisc the smart data starts slightly lower to accommodate
      * the erasure status ellipse & text
      */
     if( pdf_type == PDF_TYPE_SINGLE_DISC )

@@ -136,7 +136,7 @@ int nwipe_get_smart_data( nwipe_misc_thread_data_t* d, size_t pdf_type, size_t* 
         {
             x = LEFT_MARGIN_SMART_DATA;  // left side of page
 
-            /* For multidisc the smart data starts slighlty lower to accomodate
+            /* For multidisc the smart data starts slightly lower to accommodate
              * the erasure status ellipse & text
              */
             if( pdf_type == PDF_TYPE_SINGLE_DISC )

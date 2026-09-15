@@ -576,7 +576,7 @@ void nwipe_gui_init( void )
     /* Enable most special keys. */
     keypad( stdscr, TRUE );
 
-    /* Initialiase pointer to default end_wipe_footer text */
+    /* Initialise pointer to default end_wipe_footer text */
     if( access( "/usr/bin/shredos_toggle_font_size.sh", F_OK ) == 0 )
     {
         p_end_wipe_footer = (char**) &shredos_end_wipe_footer;
@@ -5149,7 +5149,7 @@ void nwipe_gui_organisation_contact_phone( const char* contact_phone )
         nwipe_log( NWIPE_LOG_ERROR, "Failed to locate [Organisation_Details.Contact_Phone] in %s", nwipe_config_file );
     }
 
-    /* libconfig: Write the organistion contact phone */
+    /* libconfig: Write the organisation contact phone */
     if( config_setting_set_string( setting, buffer ) == CONFIG_FALSE )
     {
         nwipe_log( NWIPE_LOG_ERROR,
@@ -5289,7 +5289,7 @@ void nwipe_gui_organisation_op_tech_name( const char* op_tech_name )
         nwipe_log( NWIPE_LOG_ERROR, "Failed to locate [Organisation_Details.Op_Tech_Name] in %s", nwipe_config_file );
     }
 
-    /* libconfig: Write the organistion operator/technician name */
+    /* libconfig: Write the organisation operator/technician name */
     if( config_setting_set_string( setting, buffer ) == CONFIG_FALSE )
     {
         nwipe_log( NWIPE_LOG_ERROR,

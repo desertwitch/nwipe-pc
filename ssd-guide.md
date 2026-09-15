@@ -23,7 +23,7 @@ Below are the standards listed for reference:
 * [NVME Sanitization Command according to NVME Command Set Specification](https://nvmexpress.org/wp-content/uploads/NVM-Express-NVM-Command-Set-Specification-Revision-1.1-2024.08.05-Ratified.pdf).
 
 ## Manufacturer and Vendor Support for Sanitization
-Given that the support for sanitization is optional and not a mandatory aspect of the respective standards the support accross vendors can vary largely.
+Given that the support for sanitization is optional and not a mandatory aspect of the respective standards the support across vendors can vary largely.
 The following table does not claim or warrant to be complete, it is highly advised to always validate the information with the manufacturer:
 
 | Manufacturer    	| Manufacturer Tool (MFT)                              	| SATA            	| SAS               	| NVME     	|
@@ -45,7 +45,7 @@ The following table does not claim or warrant to be complete, it is highly advis
 
 ## Advised Procedure for Sanitization of SSD Drives
 
-1.  Complete an intial sanitization using the manufacturer tools or if supported by the manufacturer use hdparm, sg_utils or nvme;
-2.  Follow up with SHREDOS/Nwipe with a single PRNG stream with verification (PRNG data is extremely hard if not impossible to compress and therefor has to be written out by the firmware);
+1.  Complete an initial sanitization using the manufacturer tools or if supported by the manufacturer use hdparm, sg_utils or nvme;
+2.  Follow up with SHREDOS/Nwipe with a single PRNG stream with verification (PRNG data is extremely hard if not impossible to compress and therefore has to be written out by the firmware);
 3.  Complete an additional sanitization using the manufacturer tools or if supported by the manufacturer use hdparm, sg_utils or nvme;
 4.  Validate that the data has been overwritten.
