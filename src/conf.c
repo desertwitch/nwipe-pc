@@ -1,7 +1,7 @@
 /*
  *  conf.c: functions that handle the nwipe.conf configuration file
  *  and the creation of the nwipe_customers.csv file. nwipe.conf uses
- *  libconfig format, while nwipe_customers.csv uses comma separted
+ *  libconfig format, while nwipe_customers.csv uses comma separated
  *  values. CSV is used so that the user can build there own customer
  *  listing using spreadsheets rather than enter all the customer
  *  information via the nwipe GUI interface.
@@ -106,7 +106,7 @@ int nwipe_conf_init()
     /**
      * If they don't already exist, populate nwipe.conf with groups, settings and values.
      * This will also fill in missing group or settings if they have been corrupted or
-     * accidently deleted by the user. It will also update an existing nwipe.conf
+     * accidentally deleted by the user. It will also update an existing nwipe.conf
      * file as new groups and settings are added to nwipe. If new settings are added
      * to nwipes conf file they MUST appear below in this list of groups and settings.
      */
@@ -143,7 +143,7 @@ int nwipe_conf_init()
     }
     else
     {
-        nwipe_log( NWIPE_LOG_INFO, "Sucessfully written nwipe config to %s", nwipe_config_file );
+        nwipe_log( NWIPE_LOG_INFO, "Successfully written nwipe config to %s", nwipe_config_file );
     }
 
     /* Read the nwipe.conf configuration file and report any errors */
@@ -457,12 +457,12 @@ int nwipe_conf_populate( char* path, char* value )
     /* This function will check that a path containing a group or multiple groups that lead to a setting all exist,
      * if they don't exist, the group/s, settings and associated value are created.
      *
-     * The path, a string consisting of one or more groups separted by a period symbol
+     * The path, a string consisting of one or more groups separated by a period symbol
      * '.' with the final element in the path being the setting name. For instance the path might be
      * PDF_Certificate.PDF_Enable. Where PDF_Certificate is the group name and PDF_Enable is the setting name.
      * If one or other don't exist then they will be created.
      *
-     * An arbitary depth of four groups are allowed for nwipe's configuration file, although we only currently, as of
+     * An arbitrary depth of four groups are allowed for nwipe's configuration file, although we only currently, as of
      * October 2023 use a depth of one group. The number of groups can be increased in the future if required by
      * changing the definition MAX_GROUP_DEPTH in conf.h
      */

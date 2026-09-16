@@ -86,7 +86,7 @@ Thanks to @PartialVolume #771
 
 ----
 
-### Fixed overlapping disk throughput on PDFs when four numeric characters are dislayed e.g. 3100 MB/S
+### Fixed overlapping disk throughput on PDFs when four numeric characters are displayed e.g. 3100 MB/S
 
 Thanks @PartialVolume #778 
 
@@ -228,9 +228,9 @@ v0.35
 - If you are running nwipe within the KDE konsole terminal and you resize the window by pulling on the corners, occasionally nwipe will exit with the error message: "GUI.c,nwipe_gui_select(), loop runaway, did you close the terminal without exiting nwipe? Initiating shutdown now" The loop runaway detection has been made less sensitive, i.e 32 iterations per second of the GUI update can now be completed before a loop runaway is detected. previously it was 8. In practise when sizing the konsole window, anywhere between 1 and 17 iterations will occur. [#467](https://github.com/martijnvanbrummelen/nwipe/pull/467)
 - Nwipe now provides better temperature support for SAS drives. Thanks to @ggruber for all the code and testing he contributed.
 - Disc sizes are now shown differently to provide more information about their size. For instance a 1.2TB drive was shown as 1TB, now it is shown as 1200GB. Thanks to @ggruber for his code contribution.
-- Interface/bustype type was reported as UNK fo SAS drives, now reported correctly as SAS. Thanks to @ggruber for his code contribution.
+- Interface/bustype type was reported as UNK for SAS drives, now reported correctly as SAS. Thanks to @ggruber for his code contribution.
 - Interface/bustype type has been enhanced to show SAS-SSD when a SSD drive is present. Thanks to @ggruber for his code contribution.
-- Nwipe's temperature retrieval code has been placed in it's own thread. This was done because it was found that any delays in obtaining the temperature resulted in a momentary freeze in the GUI wipe screen updating it's stats. This wasn't noticable if you were erasing a small number of drives but become apparent when wiping ten or twenty drives simultaneously.
+- Nwipe's temperature retrieval code has been placed in it's own thread. This was done because it was found that any delays in obtaining the temperature resulted in a momentary freeze in the GUI wipe screen updating it's stats. This wasn't noticeable if you were erasing a small number of drives but become apparent when wiping ten or twenty drives simultaneously.
 
 v0.34
 -----------------------
@@ -241,7 +241,7 @@ v0.33
 - Fixes a slight screen corruption on 80 column display. When highlighting the verify ones option the first two digits of DoD 5220.20-M disappear. This patch fixes that issue.@PartialVolume [#348](https://github.com/martijnvanbrummelen/nwipe/pull/348)
 - For some controllers/drivers the readlink method of obtaining the bus type for GUI display does not work. If we haven't already resolved the bus type, we then also check smartctl for the transport protocol for SAS. @PartialVolume [#350](https://github.com/martijnvanbrummelen/nwipe/pull/350)
 - Check smartctl for unresolved bus types SATA  @PartialVolume [#358](https://github.com/martijnvanbrummelen/nwipe/pull/358)
-- Changed message from (No ATA pass-thru) to (S/N: unknown) as the reason the serial number is unknown is because there is no ATA pass through for the chipset being used by the USB to SATA adapter, basically we are making the message more meaningful for the end user rather than for the engineer/programmer that may understand the previous terminology used. @PartialVolume @Firminator [#356](https://github.com/martijnvanbrummelen/nwipe/pull/356) 
+- Changed message from (No ATA pass-thru) to (S/N: unknown) as the reason the serial number is unknown is because there is no ATA pass-through for the chipset being used by the USB to SATA adapter, basically we are making the message more meaningful for the end user rather than for the engineer/programmer that may understand the previous terminology used. @PartialVolume @Firminator [#356](https://github.com/martijnvanbrummelen/nwipe/pull/356) 
 - Add drive temperature monitoring and display temperature in degrees Celsius in the GUI. Requires the kernel drivetemp module and makes use of the hwmon sub system in the kernel to extract drive temperatures. Nwipe will automatically load the drivetemp module if it's available. @PartialVolume [#360](https://github.com/martijnvanbrummelen/nwipe/pull/360) [#361](https://github.com/martijnvanbrummelen/nwipe/pull/361) [#364](https://github.com/martijnvanbrummelen/nwipe/pull/364)
 - Remove /dev/ from gui for long device names. This fixes column alignment issues in the gui with nvme drives i.e. nvme0n1 etc. If the drive name including path exceeds 8 characters the /dev/ is removed and prefixed with spaces to a total max length of 8 characters. @PartialVolume [#365](https://github.com/martijnvanbrummelen/nwipe/pull/365)
 - Add -q --quiet option - anonymize serial numbers and SMBIOS-DMI data. This anonymizes serial numbers and related identifiable information for drives and hardware but does not remove model information in both the GUI and the log displayed by stdout at the end of a wipe and also in the log file if enabled in options. This feature is useful for uploading logs when submitting bug reports. @PartialVolume [#366](https://github.com/martijnvanbrummelen/nwipe/pull/366) [#367](https://github.com/martijnvanbrummelen/nwipe/pull/367) [#371](https://github.com/martijnvanbrummelen/nwipe/pull/371) [#379](https://github.com/martijnvanbrummelen/nwipe/pull/379) [#383](https://github.com/martijnvanbrummelen/nwipe/pull/383)

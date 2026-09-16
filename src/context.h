@@ -75,11 +75,26 @@ typedef enum {
 } nwipe_secure_erase_type_t;
 
 typedef enum {
-    NWIPE_SECURE_ERASE_UNPLANNED = 0, /* Unused: Do not run a secure erase */
-    NWIPE_SECURE_ERASE_PLANNED, /* Unused: Run a (configured) secure erase */
-    NWIPE_SECURE_ERASE_SUCCESS, /* Secure erase was successful */
-    NWIPE_SECURE_ERASE_FAILURE /* Secure erase has failed */
+    NWIPE_SECURE_ERASE_STATUS_UNKNOWN = 0,
+    NWIPE_SECURE_ERASE_STATUS_IN_PROGRESS, /* Secure erase in progress */
+    NWIPE_SECURE_ERASE_STATUS_SUCCESS, /* Secure erase was successful */
+    NWIPE_SECURE_ERASE_STATUS_FAILURE /* Secure erase has failed */
 } nwipe_secure_erase_status_t;
+
+typedef enum {
+    NWIPE_SECURE_ERASE_ORCHESTRATION_UNKNOWN = 0,
+    NWIPE_SECURE_ERASE_ORCHESTRATION_STANDALONE, /* Only manual secure erase */
+    NWIPE_SECURE_ERASE_ORCHESTRATION_PRE_CHAINED, /* precedes traditional wipe, i.e part of a method */
+    NWIPE_SECURE_ERASE_ORCHESTRATION_POST_CHAINED /* follows a traditional wipe, i.e part of a method */
+} nwipe_secure_erase_orchestration_t;
+
+/* Keep this list applicable for both ATA and NVMe */
+typedef enum {
+    NWIPE_SECURE_ERASE_METHOD_UNKNOWN = 0,
+    NWIPE_SECURE_ERASE_METHOD_BLOCK, /* Block Erase */
+    NWIPE_SECURE_ERASE_METHOD_CRYPTO, /* Crypto Erase */
+    NWIPE_SECURE_ERASE_METHOD_OVERWRITE /* Pattern Overwrite */
+} nwipe_secure_erase_method_t;
 
 /* I/O direction for data path. */
 typedef enum {
@@ -108,7 +123,7 @@ typedef struct nwipe_speedring_t_
 // Arbitrary length, so far most paths don't exceed about 25 characters
 #define MAX_HWMON_PATH_LENGTH 100
 
-// 20 chracters for serial number plus null Byte
+// 20 characters for serial number plus null Byte
 #define NWIPE_SERIALNUMBER_LENGTH 20
 
 // UUID size
@@ -255,8 +270,22 @@ typedef struct nwipe_context_t_
                                  // -1: Device did not understand probe
                                  //  0: Confirmed not supported by device
                                  //  1: Confirmed to be supported by device
+    nwipe_secure_erase_orchestration_t
+        secure_erase_orchestration;  // Flag, used by the PDF report logic to determine
+                                     // whether to show secure erase only on report (STANDALONE)
+                                     // or whether the report includes traditional
+                                     // pre or post wipes, verification and blanking (PRE_CHAINED/POST_CHAINED)
+                                     // 0: undefined, not yet set
+                                     // 1: secure erase, operating in manual STANDALONE
+                                     // 2: secure erase, part of a method starting before everything else.(PRE_CHAINED)
+                                     // 3: secure erase, part of a method starting after everything else. (POST_CHAINED)
     nwipe_secure_erase_type_t secure_erase_type; /* Secure Erase: ATA or NVMe */
-    nwipe_secure_erase_status_t secure_erase_status; /* Secure Erase: Status */
+    nwipe_secure_erase_method_t secure_erase_method; /* Secure Erase: Method */
+    nwipe_secure_erase_status_t
+        secure_erase_status;  // Beware status field is also updated for non-destructive methods,
+                              // such as clearing an error condition or exiting media verification
+                              // state. Check against the field secure_erase_method if you need to
+                              // filter out non-destructive methods to derive secure erase success.
     void* secure_erase_context; /* Secure Erase: Pointer to context */
 
     /*
@@ -268,6 +297,8 @@ typedef struct nwipe_context_t_
     struct hd_driveid identity;
     float min_throughput[400];  // buckets for storing minimum speed of drive
     float max_throughput[400];  // buckets for storing maximum speed of drive
+    float min_temp[400];  // buckets for storing minimum drive temperatures
+    float max_temp[400];  // buckets for storing maximum drive temperatures
 } nwipe_context_t;
 
 /*

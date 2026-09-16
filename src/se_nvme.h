@@ -70,14 +70,9 @@ typedef struct
     /* Options (set before nwipe_se_nvme_sanitize) */
     enum nvme_sanitize_sanact planned_sanact;
     int destructive_sanact; /* 0 = No, 1 = Yes */
-    __u8 owpass; /* 0-15 (0-based, sent directly) */
+    __u8 owpass; /* 0-based overwrite passes (0=1..15=16) */
     bool oipbp; /* invert pattern between passes */
     __u32 ovrpat; /* 32-bit overwrite pattern */
-    bool nodas; /* no deallocate after sanitize */
-    bool ause; /* allow unrestricted sanitize exit */
-#ifdef HAVE_NVME_SANITIZE_SANACT_EXIT_MEDIA_VERIF
-    bool emvs; /* enter media verification state */
-#endif
 } nwipe_se_nvme_ctx;
 
 int nwipe_se_nvme_topo_init( nwipe_se_nvme_topo* topo );
@@ -89,6 +84,7 @@ void nwipe_se_nvme_close( nwipe_se_nvme_ctx* san );
 void nwipe_se_nvme_destroy( nwipe_se_nvme_ctx* san );
 int nwipe_se_nvme_sancap( nwipe_se_nvme_ctx* san );
 int nwipe_se_nvme_poll( nwipe_se_nvme_ctx* san );
+int nwipe_se_nvme_sanact_is_destructive( enum nvme_sanitize_sanact act );
 int nwipe_se_nvme_sanitize( nwipe_se_nvme_ctx* san );
 
 #endif /* HAVE_LIBNVME */

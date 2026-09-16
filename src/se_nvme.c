@@ -13,7 +13,18 @@
 #define _GNU_SOURCE 1 /* asprintf */
 #endif
 
-#define _POSIX_C_SOURCE 200809L
+#include <endian.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <syslog.h>
+#include <unistd.h>
+#include <libnvme.h>
+
+#include <linux/types.h>
 
 #include "nwipe.h"
 #include "context.h"
@@ -247,7 +258,7 @@ void nwipe_se_nvme_destroy( nwipe_se_nvme_ctx* san )
 
 /*
  * Probes for NVMe Sanitize capabilities using nvme_identify_ctrl().
- * Sets san->cap_caps_valid to 1 if san_cap_* values are useable.
+ * Sets san->cap_caps_valid to 1 if san_cap_* values are usable.
  * Returns -1 only on an allocation- or command-rejected failure.
  */
 int nwipe_se_nvme_sancap( nwipe_se_nvme_ctx* san )
@@ -312,7 +323,8 @@ int nwipe_se_nvme_sancap( nwipe_se_nvme_ctx* san )
  * Polls the sanitize status using nvme_get_log_sanitize().
  * Updates san->state, san->progress_* and san_est_* variables.
  * Avoid hammering of device with calls in a tight loop, ensure delays.
- * Success returns 0; errors -1, logs and populates san->error_msg buffer.
+ * Success returns 0, error returns -errno or 1 if no errno was available.
+ * Error messages are written into the san->error_msg for GUI consumption.
  */
 int nwipe_se_nvme_poll( nwipe_se_nvme_ctx* san )
 {
@@ -322,7 +334,7 @@ int nwipe_se_nvme_poll( nwipe_se_nvme_ctx* san )
     {
         snprintf( san->error_msg, sizeof( san->error_msg ), "FD is not open" );
         nwipe_log( NWIPE_LOG_ERROR, "%s: %s: FD is not open", __FUNCTION__, san->ctrl_path );
-        return -1;
+        return -EBADF;
     }
 
     struct nvme_sanitize_log_page* log = nwipe_se_nvme_alloc( sizeof( *log ) );
@@ -330,15 +342,17 @@ int nwipe_se_nvme_poll( nwipe_se_nvme_ctx* san )
     {
         snprintf( san->error_msg, sizeof( san->error_msg ), "Log page allocation failed" );
         nwipe_log( NWIPE_LOG_ERROR, "%s: %s: nvme_sanitize_log_page allocation failed", __FUNCTION__, san->ctrl_path );
-        return -1;
+        return -ENOMEM;
     }
 
-    int err = nvme_get_log_sanitize( san->fd, true, log );
+    int err = nvme_get_log_sanitize( san->fd, false, log );
     if( err != 0 )
     {
+        int eno = 0;
+
         if( err < 0 )
         {
-            int eno = errno;
+            eno = errno;
             snprintf( san->error_msg, sizeof( san->error_msg ), "%s (errno=%d, err=%d)", strerror( eno ), eno, err );
             nwipe_log( NWIPE_LOG_ERROR,
                        "%s: %s: nvme_get_log_sanitize() failed: %s (errno=%d, err=%d)",
@@ -361,7 +375,7 @@ int nwipe_se_nvme_poll( nwipe_se_nvme_ctx* san )
         }
 
         free( log );
-        return -1;
+        return eno ? -eno : 1;
     }
 
     __u16 sstat = le16toh( log->sstat );
@@ -374,30 +388,35 @@ int nwipe_se_nvme_poll( nwipe_se_nvme_ctx* san )
         /* Don't fix the typo, it's in the library */
         case NVME_SANITIZE_SSTAT_STATUS_IN_PROGESS:
             san->state = NWIPE_SE_NVME_STATE_IN_PROGRESS;
+            san->progress_raw = le16toh( log->sprog );
+            san->progress_pct = ( (int) san->progress_raw * 100 ) / 65536;
             break;
 
         case NVME_SANITIZE_SSTAT_STATUS_COMPLETE_SUCCESS:
         case NVME_SANITIZE_SSTAT_STATUS_ND_COMPLETE_SUCCESS:
             san->state = NWIPE_SE_NVME_STATE_SUCCESS;
+            san->progress_raw = 0xFFFF;
+            san->progress_pct = 100;
             break;
 
         case NVME_SANITIZE_SSTAT_STATUS_COMPLETED_FAILED:
             san->state = NWIPE_SE_NVME_STATE_FAILURE;
+            san->progress_raw = 0;
+            san->progress_pct = 0;
             break;
 
         case NVME_SANITIZE_SSTAT_STATUS_NEVER_SANITIZED:
             san->state = NWIPE_SE_NVME_STATE_NEVER_SANITIZED;
+            san->progress_raw = 0;
+            san->progress_pct = 0;
             break;
 
         default:
             san->state = NWIPE_SE_NVME_STATE_UNKNOWN;
+            san->progress_raw = 0;
+            san->progress_pct = 0;
             break;
     }
-
-    san->progress_raw = le16toh( log->sprog );
-    san->progress_pct = ( (int) san->progress_raw * 100 ) / UINT16_MAX;
-    if( san->progress_pct > 100 )
-        san->progress_pct = 100;
 
     __u32 eto = le32toh( log->eto );
     __u32 etbe = le32toh( log->etbe );
@@ -411,6 +430,24 @@ int nwipe_se_nvme_poll( nwipe_se_nvme_ctx* san )
 } /* nwipe_se_nvme_poll */
 
 /*
+ * Determines whether an NVMe sanitize action destroys user data.
+ * Returns 1 for destructive actions, otherwise returns 0.
+ */
+int nwipe_se_nvme_sanact_is_destructive( enum nvme_sanitize_sanact act )
+{
+    switch( act )
+    {
+        case NVME_SANITIZE_SANACT_START_BLOCK_ERASE:
+        case NVME_SANITIZE_SANACT_START_CRYPTO_ERASE:
+        case NVME_SANITIZE_SANACT_START_OVERWRITE:
+            return 1;
+
+        default:
+            return 0;
+    }
+} /* nwipe_se_nvme_sanact_is_destructive */
+
+/*
  * Run the san->planned_sanact sanitize operation.
  * Sends command to device and returns 0 on success.
  * Operation itself runs on the device (as non-blocking).
@@ -418,6 +455,12 @@ int nwipe_se_nvme_poll( nwipe_se_nvme_ctx* san )
  */
 int nwipe_se_nvme_sanitize( nwipe_se_nvme_ctx* san )
 {
+    bool nodas; /* No-Deallocate After Sanitize */
+    bool ause; /* Allow Unrestricted Sanitize Exit */
+#ifdef HAVE_NVME_SANITIZE_SANACT_EXIT_MEDIA_VERIF
+    bool emvs; /* Enter Media Verification State */
+#endif
+
     memset( san->error_msg, 0, sizeof( san->error_msg ) ); /* Used in GUI */
 
     if( san->fd < 0 )
@@ -427,48 +470,7 @@ int nwipe_se_nvme_sanitize( nwipe_se_nvme_ctx* san )
         return -1;
     }
 
-    if( san->planned_sanact == NVME_SANITIZE_SANACT_EXIT_FAILURE
-#ifdef HAVE_NVME_SANITIZE_SANACT_EXIT_MEDIA_VERIF
-        || san->planned_sanact == NVME_SANITIZE_SANACT_EXIT_MEDIA_VERIF
-#endif
-    )
-    {
-        if( san->ause )
-        {
-            snprintf( san->error_msg, sizeof( san->error_msg ), "AUSE not allowed with sanact" );
-            nwipe_log( NWIPE_LOG_ERROR,
-                       "%s: %s: AUSE not allowed with sanact=%d",
-                       __FUNCTION__,
-                       san->ctrl_path,
-                       san->planned_sanact );
-            return -1;
-        }
-        if( san->nodas )
-        {
-            snprintf( san->error_msg, sizeof( san->error_msg ), "NODAS not allowed with sanact" );
-            nwipe_log( NWIPE_LOG_ERROR,
-                       "%s: %s: NODAS not allowed with sanact=%d",
-                       __FUNCTION__,
-                       san->ctrl_path,
-                       san->planned_sanact );
-            return -1;
-        }
-    }
-
-    if( san->planned_sanact != NVME_SANITIZE_SANACT_START_OVERWRITE )
-    {
-        if( san->owpass || san->oipbp || san->ovrpat )
-        {
-            snprintf( san->error_msg, sizeof( san->error_msg ), "Overwrite fields not allowed with sanact" );
-            nwipe_log( NWIPE_LOG_ERROR,
-                       "%s: %s: Overwrite fields set but sanact=%d is not overwrite",
-                       __FUNCTION__,
-                       san->ctrl_path,
-                       san->planned_sanact );
-            return -1;
-        }
-    }
-    else
+    if( san->planned_sanact == NVME_SANITIZE_SANACT_START_OVERWRITE )
     {
         if( san->owpass > 15 )
         {
@@ -481,18 +483,38 @@ int nwipe_se_nvme_sanitize( nwipe_se_nvme_ctx* san )
             return -1;
         }
     }
-
-    switch( san->planned_sanact )
+    else
     {
-        case NVME_SANITIZE_SANACT_START_BLOCK_ERASE:
-        case NVME_SANITIZE_SANACT_START_CRYPTO_ERASE:
-        case NVME_SANITIZE_SANACT_START_OVERWRITE:
-            san->destructive_sanact = 1;
-            break;
-        default:
-            san->destructive_sanact = 0;
-            break;
+        /* No effect, must be in zero state */
+        san->owpass = 0;
+        san->oipbp = false;
+        san->ovrpat = 0;
     }
+
+    if( san->planned_sanact == NVME_SANITIZE_SANACT_EXIT_FAILURE
+#ifdef HAVE_NVME_SANITIZE_SANACT_EXIT_MEDIA_VERIF
+        || san->planned_sanact == NVME_SANITIZE_SANACT_EXIT_MEDIA_VERIF
+#endif
+    )
+    {
+        /* No effect, must be in zero state */
+        nodas = false;
+        ause = false;
+#ifdef HAVE_NVME_SANITIZE_SANACT_EXIT_MEDIA_VERIF
+        emvs = false;
+#endif
+    }
+    else
+    {
+        nodas = false; /* Enabling this is dangerous, keep it disabled */
+        ause = true; /* Disabling this is dangerous, keep it enabled */
+#ifdef HAVE_NVME_SANITIZE_SANACT_EXIT_MEDIA_VERIF
+        emvs = false; /* Enabling this is dangerous, keep it disabled */
+#endif
+    }
+
+    /* Keep in sync, in case the caller did not set it themselves */
+    san->destructive_sanact = nwipe_se_nvme_sanact_is_destructive( san->planned_sanact );
 
     nwipe_log( NWIPE_LOG_INFO, "%s: issuing SANITIZE sanact=%d", san->ctrl_path, san->planned_sanact );
 
@@ -504,12 +526,13 @@ int nwipe_se_nvme_sanitize( nwipe_se_nvme_ctx* san )
     args.timeout = NVME_DEFAULT_IOCTL_TIMEOUT;
     args.sanact = san->planned_sanact;
     args.ovrpat = san->ovrpat;
-    args.ause = san->ause;
-    args.owpass = san->owpass;
+    args.ause = ause;
+    /* owpass is 0-based: 0=1 pass .. 15=16 passes; +1 to wire format where 0=16 passes */
+    args.owpass = ( san->planned_sanact == NVME_SANITIZE_SANACT_START_OVERWRITE ) ? ( ( san->owpass + 1 ) & 0x0F ) : 0;
     args.oipbp = san->oipbp;
-    args.nodas = san->nodas;
+    args.nodas = nodas;
 #ifdef HAVE_NVME_SANITIZE_SANACT_EXIT_MEDIA_VERIF
-    args.emvs = san->emvs;
+    args.emvs = emvs;
 #endif
     args.result = NULL;
 
