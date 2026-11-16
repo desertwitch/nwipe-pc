@@ -6931,7 +6931,7 @@ void nwipe_gui_set_system_year( void )
     fp = popen( "date +%Y", "r" );
     if( fp == NULL )
     {
-        nwipe_log( NWIPE_LOG_INFO, "popen:Failed to retrieve date +%Y %s", date_buffer );
+        nwipe_log( NWIPE_LOG_INFO, "popen:Failed to retrieve date +%%Y %s", date_buffer );
         mvwprintw( main_window, yy + 4, tab1, "popen:date command failed retrieving year" );
     }
 
@@ -7082,7 +7082,7 @@ void nwipe_gui_set_system_month( void )
     fp = popen( "date +%m", "r" );
     if( fp == NULL )
     {
-        nwipe_log( NWIPE_LOG_INFO, "popen:Failed to retrieve date +%m %s", date_buffer );
+        nwipe_log( NWIPE_LOG_INFO, "popen:Failed to retrieve date +%%m %s", date_buffer );
         mvwprintw( main_window, yy + 4, tab1, "popen:date command failed retrieving month" );
     }
 
@@ -7234,7 +7234,7 @@ void nwipe_gui_set_system_day( void )
     fp = popen( "date +%d", "r" );
     if( fp == NULL )
     {
-        nwipe_log( NWIPE_LOG_INFO, "popen:Failed to retrieve date +%d %s", date_buffer );
+        nwipe_log( NWIPE_LOG_INFO, "popen:Failed to retrieve date +%%d %s", date_buffer );
         mvwprintw( main_window, yy + 4, tab1, "popen:date command failed retrieving day of month" );
     }
 
@@ -7388,7 +7388,7 @@ void nwipe_gui_set_system_hour( void )
     fp = popen( "date +%H", "r" );
     if( fp == NULL )
     {
-        nwipe_log( NWIPE_LOG_INFO, "popen:Failed to retrieve date +%H %s", date_buffer );
+        nwipe_log( NWIPE_LOG_INFO, "popen:Failed to retrieve date +%%H %s", date_buffer );
         mvwprintw( main_window, yy + 4, tab1, "popen:date command failed retrieving hour" );
     }
 
@@ -7540,7 +7540,7 @@ void nwipe_gui_set_system_minute( void )
     fp = popen( "date +%M", "r" );
     if( fp == NULL )
     {
-        nwipe_log( NWIPE_LOG_INFO, "popen:Failed to retrieve date +%M %s", date_buffer );
+        nwipe_log( NWIPE_LOG_INFO, "popen:Failed to retrieve date +%%M %s", date_buffer );
         mvwprintw( main_window, yy + 4, tab1, "popen:date command failed retrieving minute" );
     }
 
@@ -7728,6 +7728,9 @@ void* nwipe_gui_status( void* ptr )
 
     /* Spinner character */
     char spinner_string[2];
+
+    /* throughput switch count, when to switch between average and instantaneous */
+    size_t switch_count = 0;
 
     /* Create the finish message, this changes based on whether PDF creation is enabled
      * and whether a logfile has been specified
@@ -8252,11 +8255,26 @@ void* nwipe_gui_status( void* ptr )
                     if( c[i]->wipe_status == 1 || nwipe_options.method == &nwipe_verify_zero
                         || nwipe_options.method == &nwipe_verify_one || c[i]->result == 0 )
                     {
-                        /* Determine throughput nomenclature for this drive and output drives throughput to GUI */
-                        Determine_C_B_nomenclature(
-                            c[i]->throughput, nomenclature_result_str, NOMENCLATURE_RESULT_STR_SIZE );
-
-                        wprintw( main_window, "[%s/s] ", nomenclature_result_str );
+                        if( switch_count > 48 )
+                        {
+                            /* Determine throughput nomenclature for instantaneous disk throughput
+                             * and output the drives throughput to GUI */
+                            Determine_C_B_nomenclature(
+                                c[i]->throughput_instantaneous, nomenclature_result_str, NOMENCLATURE_RESULT_STR_SIZE );
+                            wprintw( main_window, "[%s/s inst.]", nomenclature_result_str );
+                            switch_count++;
+                            if( switch_count > 96 )
+                                switch_count = 0;
+                        }
+                        else
+                        {
+                            /* Determine throughput nomenclature for average disk throughput
+                             * and output the drives throughput to GUI */
+                            Determine_C_B_nomenclature(
+                                c[i]->throughput, nomenclature_result_str, NOMENCLATURE_RESULT_STR_SIZE );
+                            wprintw( main_window, "[%s/s avg. ]", nomenclature_result_str );
+                            switch_count++;
+                        }
                     }
                     else
                     {
@@ -8493,6 +8511,7 @@ int compute_stats( void* ptr )
             if( times_10 > 0 && c[i]->round_size > 0 )
             {
                 double throughput_10 = (double) bytes_10 / (double) times_10;
+                c[i]->throughput_instantaneous = throughput_10;  // Save in drive context for use by GUI code.
                 double current_temp = (double) c[i]->temp1_input;  // Current temperature reading
 
                 /* Map current byte progress cleanly to one of the 400 array buckets */
@@ -8522,16 +8541,24 @@ int compute_stats( void* ptr )
                 /* ------------------------------------------------------------------
                  * Temperature Min/Max Tracking
                  * ------------------------------------------------------------------ */
-                if( current_temp > 0 )
+                /* Intercept NO_TEMPERATURE_DATA and convert to 0 for the graph engine */
+                if( current_temp == NO_TEMPERATURE_DATA )
                 {
-                    /* Record maximum temperature for this chunk */
-                    if( current_temp > c[i]->max_temp[bucket] )
+                    current_temp = 0.0;
+                }
+
+                /* Allow temperatures down to -20 (and 0 for missing data) */
+                if( current_temp >= -20.0 )
+                {
+                    /* Record maximum temperature for this chunk
+                     * * CRITICAL: Added '== 0.0f' check so negative temps can overwrite the default 0 */
+                    if( c[i]->max_temp[bucket] == 0.0f || current_temp > c[i]->max_temp[bucket] )
                     {
                         c[i]->max_temp[bucket] = current_temp;
                     }
 
                     /* Record minimum temperature for this chunk */
-                    if( c[i]->min_temp[bucket] == 0 || current_temp < c[i]->min_temp[bucket] )
+                    if( c[i]->min_temp[bucket] == 0.0f || current_temp < c[i]->min_temp[bucket] )
                     {
                         c[i]->min_temp[bucket] = current_temp;
                     }
@@ -8557,7 +8584,7 @@ int compute_stats( void* ptr )
                     }
 
                     /* Backfill temperature */
-                    if( current_temp > 0 )
+                    if( current_temp >= -20.0 )
                     {
                         if( c[i]->max_temp[b] == 0.0f )
                         {

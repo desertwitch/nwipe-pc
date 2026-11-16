@@ -57,7 +57,7 @@ extern char pdf_footer[MAX_PDF_FOOTER_TEXT_LENGTH];
 extern char tag_header[MAX_PDF_TAG_LENGTH];
 extern float height;
 extern float page_width;
-extern int status_icon;
+extern size_t status_icon;
 extern struct pdf_object** pdf_page_array;
 
 void append_page_array( struct pdf_object***, struct pdf_object* );
@@ -405,7 +405,7 @@ int create_system_multi_disc_pdf( nwipe_thread_data_ptr_t* ptrx )
          * prng type
          */
         pdf_add_text( pdf, NULL, "PRNG algorithm:", TEXT_SIZE_DATA, 300, yoffset, PDF_GRAY );
-        pdf_add_text_prng_type( 0, 395, yoffset, PDF_BLACK );
+        pdf_add_text_prng_type( NWIPE_PDF_FORCE_OUTPUT_RESULT, 395, yoffset, PDF_BLACK );
 
         /***********
          * Blanking pass
